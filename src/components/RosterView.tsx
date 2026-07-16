@@ -744,7 +744,7 @@ export default function RosterView({
                             <span className="font-semibold text-slate-800 block text-xs hover:text-blue-600 cursor-pointer" onClick={() => onSelectStudent(s.id)}>
                               {s.name}
                             </span>
-                            <span className="text-[10px] text-slate-400 font-medium">Oakridge Student</span>
+                            <span className="text-[10px] text-slate-400 font-medium">{cardSchoolName} Student</span>
                           </div>
                         </td>
 
