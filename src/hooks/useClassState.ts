@@ -30,6 +30,20 @@ export interface Toast {
   type: 'success' | 'error' | 'warning' | 'info';
 }
 
+export interface StoreScanResult {
+  item: StoreItem;
+  student?: Student;
+  status: 'success' | 'error' | 'warning' | 'price-check';
+  message: string;
+  timestamp: number;
+}
+
+export interface CashierCartLine {
+  itemId: string;
+  quantity: number;
+  price: number;
+}
+
 function inferSubject(name: string): Assignment['subject'] {
   const n = name.toLowerCase();
   if (n.includes('math') || n.includes('fraction') || n.includes(' worksheet') || n.includes('number') || n.includes('arithmetic') || n.includes('algebra') || n.includes('geometry') || n.includes('multiplication') || n.includes('division')) return 'Math';
@@ -43,6 +57,7 @@ function inferSubject(name: string): Assignment['subject'] {
 export function useClassState() {
   const [classes, setClasses] = useState<ClassSession[]>([]);
   const [activeClassId, setActiveClassId] = useState<string>('');
+  const [isInitialized, setIsInitialized] = useState(false);
 
   const [students, setStudents] = useState<Student[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -71,6 +86,7 @@ export function useClassState() {
   
   // Custom toast notifications
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [storeScanResult, setStoreScanResult] = useState<StoreScanResult | null>(null);
 
   // Load classes and active class ID on mount
   useEffect(() => {
@@ -78,6 +94,7 @@ export function useClassState() {
     const loadedActiveId = getActiveClassId();
     setClasses(loadedClasses);
     setActiveClassId(loadedActiveId);
+    setIsInitialized(true);
   }, []);
 
   // Reload data whenever activeClassId changes
@@ -429,10 +446,42 @@ export function useClassState() {
     updateStudentsState(updated);
   };
 
+  const getAssignedStudentIds = (excludedCurrentStudentId?: string) => {
+    const excludedId = excludedCurrentStudentId?.trim().toUpperCase();
+    const assignedIds = new Set<string>();
+
+    classes.forEach((classSession) => {
+      const classStudents = classSession.id === activeClassId
+        ? students
+        : (() => {
+            try {
+              const storedStudents = localStorage.getItem(getClassKeys(classSession.id).STUDENTS);
+              const parsedStudents = storedStudents ? JSON.parse(storedStudents) : [];
+              return Array.isArray(parsedStudents) ? parsedStudents as Student[] : [];
+            } catch {
+              return [] as Student[];
+            }
+          })();
+
+      classStudents.forEach((student) => {
+        const id = student.id.trim().toUpperCase();
+        if (id && !(classSession.id === activeClassId && id === excludedId)) {
+          assignedIds.add(id);
+        }
+      });
+    });
+
+    return assignedIds;
+  };
+
   const addStudent = (id: string, name: string, grade: string) => {
     const cleanId = id.trim().toUpperCase();
-    if (students.some((s) => s.id === cleanId)) {
-      addToast(`Student ID ${cleanId} already exists!`, 'error');
+    if (!cleanId) {
+      addToast('Student ID is required.', 'error');
+      return false;
+    }
+    if (getAssignedStudentIds().has(cleanId)) {
+      addToast(`Student ID ${cleanId} is already assigned in another class or this roster.`, 'error');
       return false;
     }
     const newStudent: Student = {
@@ -443,6 +492,47 @@ export function useClassState() {
     };
     updateStudentsState([...students, newStudent]);
     addToast(`Onboarded ${newStudent.name} with +50 points!`, 'success');
+    return true;
+  };
+
+  const importStudents = (entries: Array<{ id?: string; name: string; points?: number }>, grade = '') => {
+    const validEntries = entries.filter((entry) => entry.name.trim());
+    if (!activeClassId || validEntries.length === 0) return false;
+
+    const existingIds = getAssignedStudentIds();
+    const importedIds = new Set<string>();
+    for (const entry of validEntries) {
+      const id = entry.id?.trim().toUpperCase();
+      if (!id) continue;
+      if (existingIds.has(id) || importedIds.has(id)) {
+        addToast(`Student ID ${id} is already assigned in another class, this roster, or repeated in this import.`, 'error');
+        return false;
+      }
+      importedIds.add(id);
+    }
+
+    let nextNumber = 1001 + students.length;
+    const importedStudents = validEntries.map((entry) => {
+      let id = entry.id?.trim().toUpperCase() || '';
+      if (!id) {
+        id = `STU${nextNumber}`;
+        while (existingIds.has(id) || importedIds.has(id)) {
+          nextNumber += 1;
+          id = `STU${nextNumber}`;
+        }
+        nextNumber += 1;
+      }
+      existingIds.add(id);
+      return {
+        id,
+        name: entry.name.trim(),
+        points: Number.isFinite(entry.points) ? Math.max(0, Math.round(entry.points as number)) : 50,
+        grade: grade.trim() || 'Class Roster'
+      };
+    });
+
+    updateStudentsState([...students, ...importedStudents]);
+    addToast(`Imported ${importedStudents.length} students into the roster.`, 'success');
     return true;
   };
 
@@ -464,8 +554,8 @@ export function useClassState() {
     
     // Check if ID is changing and if the new ID already exists
     if (cleanNewId && cleanNewId !== oldId) {
-      if (students.some((s) => s.id === cleanNewId)) {
-        addToast(`Student ID ${cleanNewId} already exists!`, 'error');
+      if (getAssignedStudentIds(oldId).has(cleanNewId)) {
+        addToast(`Student ID ${cleanNewId} is already assigned in another class or this roster.`, 'error');
         return false;
       }
     }
@@ -592,8 +682,13 @@ export function useClassState() {
     updateSubmissionsState(updatedSubmissions);
   };
 
-  const addStoreItem = (name: string, cost: number, description: string, stock: number, category: StoreItem['category'], iconName: string, imageUrl?: string) => {
-    const newId = 'ITM' + (101 + storeItems.length);
+  const addStoreItem = (name: string, cost: number, description: string, stock: number, category: StoreItem['category'], iconName: string, imageUrl?: string, packageBarcode?: string) => {
+    const newId = `ITM${Date.now().toString().slice(-8)}`;
+    const normalizedBarcode = packageBarcode?.trim().toUpperCase();
+    if (normalizedBarcode && storeItems.some((item) => item.id.toUpperCase() === normalizedBarcode || item.packageBarcode?.toUpperCase() === normalizedBarcode)) {
+      addToast(`Barcode ${normalizedBarcode} is already assigned to another store item.`, 'error');
+      return false;
+    }
     const newItem: StoreItem = {
       id: newId,
       name: name.trim(),
@@ -603,10 +698,39 @@ export function useClassState() {
       category,
       iconName,
       imageUrl,
+      packageBarcode: normalizedBarcode || undefined,
       archived: false
     };
     updateStoreItemsState([...storeItems, newItem]);
     addToast(`Added store item: ${newItem.name}`, 'success');
+    return true;
+  };
+
+  const updateStoreItem = (itemId: string, updates: Pick<StoreItem, 'name' | 'cost' | 'description' | 'stock' | 'category' | 'iconName'> & { imageUrl?: string; packageBarcode?: string }) => {
+    const item = storeItems.find((storeItem) => storeItem.id === itemId);
+    if (!item) return false;
+
+    const normalizedBarcode = updates.packageBarcode?.trim().toUpperCase();
+    if (normalizedBarcode && storeItems.some((storeItem) =>
+      storeItem.id !== itemId && (
+        storeItem.id.toUpperCase() === normalizedBarcode ||
+        storeItem.packageBarcode?.toUpperCase() === normalizedBarcode
+      )
+    )) {
+      addToast(`Barcode ${normalizedBarcode} is already assigned to another store item.`, 'error');
+      return false;
+    }
+
+    const updatedItem = {
+      ...item,
+      ...updates,
+      name: updates.name.trim(),
+      description: updates.description.trim(),
+      packageBarcode: normalizedBarcode || undefined
+    };
+    updateStoreItemsState(storeItems.map((storeItem) => storeItem.id === itemId ? updatedItem : storeItem));
+    addToast(`Updated store item: ${updatedItem.name}`, 'success');
+    return true;
   };
 
   const archiveStoreItem = (itemId: string) => {
@@ -656,7 +780,7 @@ export function useClassState() {
     }
   };
 
-  const checkoutStoreItemDirectly = (studentId: string, itemId: string) => {
+  const checkoutStoreItemDirectly = (studentId: string, itemId: string, fromScan = false) => {
     const student = students.find((s) => s.id === studentId);
     const item = storeItems.find((i) => i.id === itemId);
 
@@ -668,13 +792,21 @@ export function useClassState() {
 
     if (item.stock <= 0) {
       scannerAudio.playError();
-      addToast(`"${item.name}" is out of stock!`, 'error');
+      const message = `"${item.name}" is out of stock!`;
+      addToast(message, 'error');
+      if (fromScan) {
+        setStoreScanResult({ item, student, status: 'error', message, timestamp: Date.now() });
+      }
       return false;
     }
 
     if (student.points < item.cost) {
       scannerAudio.playError();
-      addToast(`Insufficient points! ${student.name} needs ${item.cost} pts but only has ${student.points} pts.`, 'error');
+      const message = `Insufficient points! ${student.name} needs ${item.cost} pts but only has ${student.points} pts.`;
+      addToast(message, 'error');
+      if (fromScan) {
+        setStoreScanResult({ item, student, status: 'error', message, timestamp: Date.now() });
+      }
       return false;
     }
 
@@ -691,11 +823,14 @@ export function useClassState() {
     updateStoreItemsState(updatedItems);
 
     // Create transaction log
+    const receiptId = `RCT${Date.now().toString().slice(-8)}`;
     const newTx: Transaction = {
       id: 'TX' + Date.now().toString().slice(-6),
+      receiptId,
       studentId,
       itemId,
       timestamp: new Date().toISOString(),
+      quantity: 1,
       pointsCost: item.cost
     };
     updateTransactionsState([newTx, ...transactions]);
@@ -711,12 +846,80 @@ export function useClassState() {
       'success'
     );
 
-    addToast(`Checkout successful! ${student.name} bought "${item.name}" (-${item.cost} pts)`, 'success');
+    const message = `Checkout successful! ${student.name} bought "${item.name}" (-${item.cost} pts)`;
+    addToast(message, 'success');
+    if (fromScan) {
+      setStoreScanResult({
+        item,
+        student: { ...student, points: student.points - item.cost },
+        status: 'success',
+        message,
+        timestamp: Date.now()
+      });
+    }
+    return true;
+  };
+
+  const checkoutCashierCart = (studentId: string, lines: CashierCartLine[]) => {
+    const student = students.find((candidate) => candidate.id === studentId);
+    const validLines = lines.filter((line) => line.quantity > 0 && Number.isFinite(line.price) && line.price >= 0);
+
+    if (!student || validLines.length === 0) {
+      scannerAudio.playError();
+      addToast('Select a student and add at least one item before confirming the cart.', 'error');
+      return false;
+    }
+
+    const cartItems = validLines.map((line) => ({ line, item: storeItems.find((item) => item.id === line.itemId) }));
+    if (cartItems.some(({ item }) => !item)) {
+      scannerAudio.playError();
+      addToast('One or more items in this cart are no longer available.', 'error');
+      return false;
+    }
+
+    const unavailable = cartItems.find(({ line, item }) => (item?.stock || 0) < line.quantity);
+    if (unavailable?.item) {
+      scannerAudio.playError();
+      addToast(`Not enough stock for "${unavailable.item.name}".`, 'error');
+      return false;
+    }
+
+    const total = validLines.reduce((sum, line) => sum + line.price * line.quantity, 0);
+    if (student.points < total) {
+      scannerAudio.playError();
+      addToast(`${student.name} needs ${total.toLocaleString()} points but only has ${student.points.toLocaleString()}.`, 'error');
+      return false;
+    }
+
+    updateStudentsState(students.map((candidate) => candidate.id === studentId
+      ? { ...candidate, points: candidate.points - total }
+      : candidate
+    ));
+    updateStoreItemsState(storeItems.map((item) => {
+      const line = validLines.find((candidate) => candidate.itemId === item.id);
+      return line ? { ...item, stock: item.stock - line.quantity } : item;
+    }));
+
+    const timestamp = new Date().toISOString();
+    const receiptId = `RCT${Date.now().toString().slice(-8)}`;
+    const cartTransactions: Transaction[] = validLines.map((line, index) => ({
+      id: `TX${Date.now().toString().slice(-6)}${index}`,
+      receiptId,
+      studentId,
+      itemId: line.itemId,
+      timestamp,
+      quantity: line.quantity,
+      pointsCost: line.price * line.quantity
+    }));
+    updateTransactionsState([...cartTransactions, ...transactions]);
+    scannerAudio.playCheckout();
+    addScanLog('CASHIER_CART', 'ItemPurchased', `${student.name} purchased ${validLines.length} cart item${validLines.length === 1 ? '' : 's'} for ${total} points`, 'success');
+    addToast(`Cashier checkout complete: ${student.name} spent ${total.toLocaleString()} points.`, 'success');
     return true;
   };
 
   // Global scanned input parser (routing logic)
-  const triggerScan = (rawCode: string, currentTab: string) => {
+  const triggerScan = (rawCode: string, currentTab: string, isPriceCheck = false) => {
     const code = rawCode.trim().toUpperCase();
     if (!code) return;
 
@@ -847,18 +1050,31 @@ export function useClassState() {
       return;
     }
 
-    // 2. Check if the code is a store item ID
-    const item = storeItems.find((i) => i.id.trim().toUpperCase() === code);
+    // 2. Check for the app's item ID or the package barcode assigned to an item.
+    const item = storeItems.find((i) =>
+      i.id.trim().toUpperCase() === code || i.packageBarcode?.trim().toUpperCase() === code
+    );
     if (item) {
+      if (isPriceCheck) {
+        const message = `${item.name} costs ${item.cost.toLocaleString()} points.`;
+        scannerAudio.playSuccess();
+        addScanLog(code, 'SystemLog', `Price check: ${item.name} costs ${item.cost} points`, 'info');
+        addToast(message, 'info');
+        setStoreScanResult({ item, status: 'price-check', message, timestamp: Date.now() });
+        return;
+      }
+
       // We scanned an item!
       if (activeStudentId) {
         // Student is selected, perform checkout!
-        checkoutStoreItemDirectly(activeStudentId, item.id);
+        checkoutStoreItemDirectly(activeStudentId, item.id, true);
       } else {
         // No student selected
         scannerAudio.playError();
         addScanLog(code, 'InvalidCode', `Scanned store item "${item.name}" but no student is active for purchase.`, 'warning');
-        addToast(`Item scanned: "${item.name}" (${item.cost} pts). Select/scan a student first to checkout!`, 'warning');
+        const message = `Item scanned: "${item.name}" (${item.cost} pts). Select or scan a student first to checkout!`;
+        addToast(message, 'warning');
+        setStoreScanResult({ item, status: 'warning', message, timestamp: Date.now() });
       }
       return;
     }
@@ -941,13 +1157,9 @@ export function useClassState() {
   };
 
   const deleteClass = (classId: string) => {
-    if (classes.length <= 1) {
-      addToast(`You must have at least one class remaining.`, 'error');
-      return;
-    }
     const classToDelete = classes.find((c) => c.id === classId);
     if (!classToDelete) return;
-    if (confirm(`Are you sure you want to delete class "${classToDelete.name}"? This will permanently delete all students, roster details, submissions, and transactions for this class.`)) {
+    if (confirm(`Are you sure you want to delete class "${classToDelete.name}"? This will permanently delete all students, roster details, submissions, transactions, and settings for this class.`)) {
       const updated = classes.filter((c) => c.id !== classId);
       setClasses(updated);
       saveClasses(updated);
@@ -957,11 +1169,17 @@ export function useClassState() {
       Object.values(keys).forEach((key) => localStorage.removeItem(key));
       localStorage.removeItem(`class_scanner_store_migrated_v4_${classId}`);
 
-      // Switch active class if deleting active
+      // Switch active class if possible; otherwise return to first-run setup.
       if (activeClassId === classId) {
-        setActiveClassId(updated[0].id);
+        const nextActiveClassId = updated[0]?.id || '';
+        setActiveClassId(nextActiveClassId);
+        if (nextActiveClassId) {
+          saveActiveClassId(nextActiveClassId);
+        } else {
+          localStorage.removeItem('class_scanner_active_class_id');
+        }
       }
-      addToast(`Deleted class "${classToDelete.name}"`, 'warning');
+      addToast(updated.length === 0 ? 'All classes removed. Start fresh by creating a new class.' : `Deleted class "${classToDelete.name}"`, 'warning');
     }
   };
 
@@ -980,6 +1198,7 @@ export function useClassState() {
   return {
     classes,
     activeClassId,
+    isInitialized,
     setActiveClassId,
     createClass,
     deleteClass,
@@ -1001,19 +1220,24 @@ export function useClassState() {
     toasts,
     addToast,
     removeToast,
+    storeScanResult,
+    setStoreScanResult,
     adjustStudentPoints,
     addStudent,
+    importStudents,
     deleteStudent,
     updateStudent,
     addAssignment,
     deleteAssignment,
     toggleSubmission,
     addStoreItem,
+    updateStoreItem,
     archiveStoreItem,
     restoreStoreItem,
     deleteStoreItem,
     permanentlyDeleteStoreItem,
     checkoutStoreItemDirectly,
+    checkoutCashierCart,
     triggerScan,
     addSubject,
     deleteSubject,

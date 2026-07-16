@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { ClassSession } from '../types';
-import { School, Plus, Edit2, Trash2, Check, ArrowRight, BookOpen, GraduationCap, Users, Coins } from 'lucide-react';
+import { School, Plus, Edit2, Trash2, Check, ArrowRight, BookOpen, GraduationCap, Users, Coins, Upload } from 'lucide-react';
 
 interface ManageClassesViewProps {
   classes: ClassSession[];
@@ -38,6 +38,8 @@ export default function ManageClassesView({
   const [editGrade, setEditGrade] = useState('');
   const [editSubject, setEditSubject] = useState('');
   const [editSchoolName, setEditSchoolName] = useState('');
+  const [editSchoolLogoUrl, setEditSchoolLogoUrl] = useState<string | undefined>();
+  const [editIdCardTitle, setEditIdCardTitle] = useState('Member ID Card');
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,6 +58,18 @@ export default function ManageClassesView({
     setEditGrade(cls.grade || '');
     setEditSubject(cls.subject || '');
     setEditSchoolName(cls.schoolName || '');
+    setEditSchoolLogoUrl(cls.schoolLogoUrl);
+    setEditIdCardTitle(cls.idCardTitle || 'Member ID Card');
+  };
+
+  const handleSchoolLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => setEditSchoolLogoUrl(reader.result as string);
+    reader.readAsDataURL(file);
+    event.target.value = '';
   };
 
   const handleUpdate = (id: string) => {
@@ -64,7 +78,9 @@ export default function ManageClassesView({
       name: editName.trim(),
       grade: editGrade.trim() || undefined,
       subject: editSubject.trim() || undefined,
-      schoolName: editSchoolName.trim() || undefined
+      schoolName: editSchoolName.trim() || undefined,
+      schoolLogoUrl: editSchoolLogoUrl,
+      idCardTitle: editIdCardTitle.trim() || 'Member ID Card'
     });
     setEditingId(null);
   };
@@ -241,6 +257,35 @@ export default function ManageClassesView({
                         onChange={(e) => setEditSchoolName(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
                       />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">ID Card Top-Right Title</label>
+                      <input
+                        type="text"
+                        value={editIdCardTitle}
+                        onChange={(e) => setEditIdCardTitle(e.target.value)}
+                        placeholder="Member ID Card"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">School Logo</label>
+                      <div className="flex items-center gap-2">
+                        {editSchoolLogoUrl ? (
+                          <img src={editSchoolLogoUrl} alt="School logo preview" className="h-8 w-8 rounded-md border border-slate-200 object-contain p-0.5" />
+                        ) : (
+                          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-100 text-slate-400">
+                            <School className="h-4 w-4" />
+                          </div>
+                        )}
+                        <label className="flex flex-1 cursor-pointer items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2 py-1.5 text-[10px] font-bold text-slate-600 hover:bg-slate-100">
+                          <Upload className="h-3 w-3" /> Upload logo
+                          <input type="file" accept="image/*" onChange={handleSchoolLogoUpload} className="hidden" />
+                        </label>
+                        {editSchoolLogoUrl && (
+                          <button type="button" onClick={() => setEditSchoolLogoUrl(undefined)} className="text-[10px] font-bold text-rose-600 hover:text-rose-700">Remove</button>
+                        )}
+                      </div>
                     </div>
                     <div className="flex justify-end gap-2 pt-2">
                       <button

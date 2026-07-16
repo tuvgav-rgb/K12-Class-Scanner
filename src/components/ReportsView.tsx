@@ -31,7 +31,8 @@ import {
   ShoppingBag,
   Award,
   Activity,
-  FileText
+  FileText,
+  ReceiptText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Student, Assignment, AssignmentSubmission, StoreItem, Transaction } from '../types';
@@ -81,6 +82,14 @@ interface StudentPerformanceAnalysis {
     }
   };
   skippedList: Assignment[];
+}
+
+interface SalesReceipt {
+  id: string;
+  student: Student | undefined;
+  timestamp: string;
+  transactions: Transaction[];
+  total: number;
 }
 
 // Helper to determine letter grade based on percentage
@@ -139,6 +148,8 @@ export default function ReportsView({
   const [activeReportTab, setActiveReportTab] = useState<'grades' | 'skipped' | 'comment' | 'economy'>('grades');
   const [copiedComment, setCopiedComment] = useState(false);
   const [customCommentText, setCustomCommentText] = useState('');
+  const [salesSearch, setSalesSearch] = useState('');
+  const [selectedReceipt, setSelectedReceipt] = useState<SalesReceipt | null>(null);
 
   // Subject Focused Studio States
   const [selectedSubject, setSelectedSubject] = useState('');
@@ -175,6 +186,25 @@ export default function ReportsView({
       maxPurchases = itemPurchaseCounts[itemId];
       mostPopularItem = storeItems.find((item) => item.id === itemId) || null;
     }
+  });
+
+  const salesReceipts = Object.values(transactions.reduce<Record<string, Transaction[]>>((grouped, transaction) => {
+    const receiptKey = transaction.receiptId || `${transaction.studentId}-${transaction.timestamp}`;
+    grouped[receiptKey] = [...(grouped[receiptKey] || []), transaction];
+    return grouped;
+  }, {})).map((receiptTransactions) => ({
+    id: receiptTransactions[0].receiptId || receiptTransactions[0].id,
+    student: students.find((student) => student.id === receiptTransactions[0].studentId),
+    timestamp: receiptTransactions[0].timestamp,
+    transactions: receiptTransactions,
+    total: receiptTransactions.reduce((sum, transaction) => sum + transaction.pointsCost, 0)
+  })).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  const filteredSalesReceipts = salesReceipts.filter((receipt) => {
+    const query = salesSearch.trim().toLowerCase();
+    if (!query) return true;
+    const itemNames = receipt.transactions.map((transaction) => storeItems.find((item) => item.id === transaction.itemId)?.name || 'Unknown item').join(' ');
+    return `${receipt.id} ${receipt.student?.name || ''} ${itemNames}`.toLowerCase().includes(query);
   });
 
   // Calculate full roster analytics
@@ -1117,6 +1147,23 @@ export default function ReportsView({
     }
   };
 
+  const printReceipt = (receipt: SalesReceipt) => {
+    const element = document.getElementById('print-area-wrapper');
+    if (!element) return;
+    const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character] || character));
+    const lines = receipt.transactions.map((transaction) => {
+      const item = storeItems.find((candidate) => candidate.id === transaction.itemId);
+      return `<tr><td>${escapeHtml(item?.name || 'Unknown item')}</td><td style="text-align:right">${transaction.quantity || 1}</td><td style="text-align:right">${transaction.pointsCost.toLocaleString()} pts</td></tr>`;
+    }).join('');
+    element.innerHTML = `<div style="font-family:Arial,sans-serif;color:#0f172a;padding:28px;max-width:420px;margin:0 auto"><div style="display:flex;justify-content:space-between;border-bottom:2px solid #0f172a;padding-bottom:12px"><strong style="font-size:18px">CLASS STORE RECEIPT</strong><span style="font-size:11px">${escapeHtml(receipt.id)}</span></div><p style="font-size:12px;line-height:1.6"><strong>Student:</strong> ${escapeHtml(receipt.student?.name || 'Former student')}<br><strong>Date:</strong> ${new Date(receipt.timestamp).toLocaleString()}</p><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:1px solid #cbd5e1"><th style="text-align:left;padding:6px 0">Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Points</th></tr></thead><tbody>${lines}</tbody></table><div style="margin-top:16px;padding-top:12px;border-top:2px solid #0f172a;text-align:right;font-size:16px"><strong>Total: ${receipt.total.toLocaleString()} points</strong></div></div>`;
+    const clearPrintArea = () => {
+      element.innerHTML = '';
+      window.removeEventListener('afterprint', clearPrintArea);
+    };
+    window.addEventListener('afterprint', clearPrintArea);
+    window.setTimeout(() => window.print(), 100);
+  };
+
   return (
     <div className="space-y-6">
       {/* View Header */}
@@ -1223,6 +1270,30 @@ export default function ReportsView({
           </div>
         </div>
       </div>
+
+      <section className="border border-slate-200 bg-white shadow-sm rounded-2xl overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-slate-100 p-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><ReceiptText className="h-4 w-4 text-emerald-600" /> Sales & Receipts</h3>
+            <p className="mt-1 text-[11px] font-medium text-slate-500">Every Class Store purchase, including completed Cashier Mode carts.</p>
+          </div>
+          <div className="relative w-full md:w-64"><Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={salesSearch} onChange={(event) => setSalesSearch(event.target.value)} placeholder="Search buyer, item, or receipt" className="w-full rounded-lg border border-slate-200 py-2 pl-8 pr-3 text-xs font-medium text-slate-700 outline-none focus:border-emerald-500" /></div>
+        </div>
+        {filteredSalesReceipts.length === 0 ? (
+          <div className="p-10 text-center"><ShoppingBag className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 text-xs font-bold text-slate-600">No sales found</p><p className="mt-1 text-[11px] text-slate-400">Completed purchases will appear here automatically.</p></div>
+        ) : (
+          <div className="max-h-[360px] overflow-y-auto divide-y divide-slate-100">
+            {filteredSalesReceipts.map((receipt) => {
+              const itemSummary = receipt.transactions.map((transaction) => storeItems.find((item) => item.id === transaction.itemId)?.name || 'Unknown item').join(', ');
+              return <div key={receipt.id} className="flex items-center gap-3 p-4 hover:bg-slate-50/70">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><ReceiptText className="h-4 w-4" /></div>
+                <div className="min-w-0 flex-1"><p className="truncate text-xs font-bold text-slate-800">{receipt.student?.name || 'Former student'}</p><p className="truncate text-[10px] font-medium text-slate-500">{itemSummary}</p><p className="mt-0.5 text-[9px] font-semibold text-slate-400">{receipt.id} · {new Date(receipt.timestamp).toLocaleString()}</p></div>
+                <div className="text-right"><p className="text-xs font-extrabold text-slate-800">{receipt.total.toLocaleString()} pts</p><button type="button" onClick={() => setSelectedReceipt(receipt)} className="mt-1 text-[10px] font-bold text-emerald-700 hover:text-emerald-900">View receipt</button></div>
+              </div>;
+            })}
+          </div>
+        )}
+      </section>
 
       {/* Visual Diagnostic Roster: Who is doing well vs. who needs support */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -2222,6 +2293,18 @@ export default function ReportsView({
 
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {selectedReceipt && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={() => setSelectedReceipt(null)}>
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+              <div className="flex items-start justify-between border-b border-slate-100 p-5"><div><p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Class Store Receipt</p><h3 className="mt-1 text-base font-extrabold text-slate-800">{selectedReceipt.student?.name || 'Former student'}</h3><p className="mt-1 text-[10px] font-semibold text-slate-400">{selectedReceipt.id} · {new Date(selectedReceipt.timestamp).toLocaleString()}</p></div><button type="button" onClick={() => setSelectedReceipt(null)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Close receipt"><XSquare className="h-5 w-5" /></button></div>
+              <div className="max-h-[45vh] divide-y divide-slate-100 overflow-y-auto px-5">{selectedReceipt.transactions.map((transaction) => { const item = storeItems.find((candidate) => candidate.id === transaction.itemId); return <div key={transaction.id} className="flex items-center justify-between py-3"><div><p className="text-xs font-bold text-slate-800">{item?.name || 'Unknown item'}</p><p className="text-[10px] font-semibold text-slate-400">Quantity {transaction.quantity || 1}</p></div><span className="text-xs font-extrabold text-slate-700">{transaction.pointsCost.toLocaleString()} pts</span></div>; })}</div>
+              <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 p-5"><div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total</p><p className="text-lg font-black text-slate-900">{selectedReceipt.total.toLocaleString()} pts</p></div><button type="button" onClick={() => printReceipt(selectedReceipt)} className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800"><Printer className="h-3.5 w-3.5" /> Print receipt</button></div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

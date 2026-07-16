@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   UserPlus,
   Search,
@@ -296,6 +296,9 @@ const CARD_THEMES: CardTheme[] = [
 
 interface RosterViewProps {
   students: Student[];
+  schoolName?: string;
+  schoolLogoUrl?: string;
+  idCardTitle?: string;
   onAddStudent: (id: string, name: string, grade: string) => boolean;
   onDeleteStudent: (studentId: string) => void;
   onAdjustPoints: (studentId: string, amount: number) => void;
@@ -306,6 +309,9 @@ interface RosterViewProps {
 
 export default function RosterView({
   students,
+  schoolName,
+  schoolLogoUrl,
+  idCardTitle,
   onAddStudent,
   onDeleteStudent,
   onAdjustPoints,
@@ -328,24 +334,26 @@ export default function RosterView({
   const activeStudent = students.find(s => s.id === selectedStudentId) || null;
   const activeThemeId = activeStudent?.cardTheme || 'navy';
   const theme = CARD_THEMES.find(t => t.id === activeThemeId) || CARD_THEMES[0];
+  const cardSchoolName = schoolName?.trim() || 'School';
+  const cardIdTitle = idCardTitle?.trim() || 'Member ID Card';
 
   // Local editing states to avoid collisions while typing
   const [editId, setEditId] = useState('');
   const [editName, setEditName] = useState('');
   const [editGrade, setEditGrade] = useState('');
-  const [editSchoolName, setEditSchoolName] = useState('');
+  const [photoCrop, setPhotoCrop] = useState<{ src: string; zoom: number; offsetX: number; offsetY: number } | null>(null);
+  const photoDragStart = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+  const cropSize = 288;
 
   useEffect(() => {
     if (activeStudent) {
       setEditId(activeStudent.id);
       setEditName(activeStudent.name);
       setEditGrade(activeStudent.grade);
-      setEditSchoolName(activeStudent.schoolName || 'Oakridge Academy');
     } else {
       setEditId('');
       setEditName('');
       setEditGrade('');
-      setEditSchoolName('');
     }
   }, [activeStudent?.id]);
 
@@ -355,21 +363,40 @@ export default function RosterView({
     if (file && activeStudent) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        onUpdateStudent(activeStudent.id, { photoUrl: reader.result as string });
+        setPhotoCrop({ src: reader.result as string, zoom: 1, offsetX: 0, offsetY: 0 });
       };
       reader.readAsDataURL(file);
     }
+    e.target.value = '';
   };
 
-  const handleSchoolLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && activeStudent) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        onUpdateStudent(activeStudent.id, { schoolLogoUrl: reader.result as string });
-      };
-      reader.readAsDataURL(file);
-    }
+  const saveCroppedPhoto = () => {
+    if (!photoCrop || !activeStudent) return;
+
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const context = canvas.getContext('2d');
+      if (!context) return;
+
+      const baseScale = cropSize / Math.min(image.width, image.height);
+      const scale = baseScale * photoCrop.zoom * (canvas.width / cropSize);
+      const width = image.width * scale;
+      const height = image.height * scale;
+      const offsetScale = canvas.width / cropSize;
+      context.drawImage(
+        image,
+        (canvas.width - width) / 2 + photoCrop.offsetX * offsetScale,
+        (canvas.height - height) / 2 + photoCrop.offsetY * offsetScale,
+        width,
+        height
+      );
+      onUpdateStudent(activeStudent.id, { photoUrl: canvas.toDataURL('image/jpeg', 0.88) });
+      setPhotoCrop(null);
+    };
+    image.src = photoCrop.src;
   };
 
   // Downloading QR Code
@@ -706,9 +733,13 @@ export default function RosterView({
                       >
                         {/* Name Column */}
                         <td className="py-3 px-5 flex items-center gap-3">
-                          <div className={`w-8.5 h-8.5 rounded-full flex items-center justify-center font-bold text-xs shrink-0 shadow-sm ${getAvatarColor(s.name)}`}>
-                            {initials}
-                          </div>
+                          {s.photoUrl ? (
+                            <img src={s.photoUrl} className="w-8.5 h-8.5 rounded-full object-cover shrink-0 shadow-sm" alt={`${s.name} avatar`} />
+                          ) : (
+                            <div className={`w-8.5 h-8.5 rounded-full flex items-center justify-center font-bold text-xs shrink-0 shadow-sm ${getAvatarColor(s.name)}`}>
+                              {initials}
+                            </div>
+                          )}
                           <div>
                             <span className="font-semibold text-slate-800 block text-xs hover:text-blue-600 cursor-pointer" onClick={() => onSelectStudent(s.id)}>
                               {s.name}
@@ -797,19 +828,19 @@ export default function RosterView({
 
                 {/* Header branding */}
                 <div className="flex items-center gap-2 border-b border-white/10 pb-2 relative z-10">
-                  {activeStudent.schoolLogoUrl ? (
-                    <img src={activeStudent.schoolLogoUrl} className={`w-5 h-5 object-contain rounded ${theme.logoBgColor} p-0.5`} alt="school logo" />
+                  {schoolLogoUrl ? (
+                    <img src={schoolLogoUrl} className={`w-5 h-5 object-contain rounded ${theme.logoBgColor} p-0.5`} alt="school logo" />
                   ) : (
                     <School className={`w-4.5 h-4.5 ${theme.accentSvgColor}`} />
                   )}
                   <div className="leading-none">
                     <span className={`text-[9px] uppercase tracking-wider font-extrabold ${theme.accentTextColor} block truncate max-w-[130px]`}>
-                      {editSchoolName !== undefined ? editSchoolName : (activeStudent.schoolName || 'Oakridge Academy')}
+                      {cardSchoolName}
                     </span>
                     <span className="text-[7px] text-slate-400 block mt-0.5">Grade Badge ID Panel</span>
                   </div>
-                  <div className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded-md ml-auto border ${theme.badgeBgColor}`}>
-                    Grade {editGrade !== undefined ? editGrade : activeStudent.grade}
+                  <div className={`max-w-[96px] truncate text-[8px] font-extrabold px-1.5 py-0.5 rounded-md ml-auto border ${theme.badgeBgColor}`} title={cardIdTitle}>
+                    {cardIdTitle}
                   </div>
                 </div>
 
@@ -817,9 +848,9 @@ export default function RosterView({
                 <div className="flex items-start gap-3 mt-1.5 flex-1 relative z-10">
                   {/* Photo or Initials */}
                   {activeStudent.photoUrl ? (
-                    <img src={activeStudent.photoUrl} className="w-11 h-11 rounded-xl object-cover shadow-md shrink-0 border border-white/10" alt="student profile" />
+                    <img src={activeStudent.photoUrl} className="w-11 h-11 rounded-full object-cover shadow-md shrink-0 border border-white/10" alt={`${activeStudent.name} avatar`} />
                   ) : (
-                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 shadow-md ${getAvatarColor(editName !== undefined ? editName : activeStudent.name)}`}>
+                    <div className={`w-11 h-11 rounded-full flex items-center justify-center font-bold text-sm shrink-0 shadow-md ${getAvatarColor(editName !== undefined ? editName : activeStudent.name)}`}>
                       {(editName !== undefined ? editName : activeStudent.name)
                         .split(' ')
                         .map((n) => n[0])
@@ -886,8 +917,8 @@ export default function RosterView({
                            <div style="position: absolute; left: 20px; top: 20px; width: 60px; height: 60px; background: ${theme.printStyles.printGlow2}; border-radius: 50%; filter: blur(15px); pointer-events: none;"></div>`
                         : '';
 
-                      const schoolLogoHtml = activeStudent.schoolLogoUrl
-                        ? `<img src="${activeStudent.schoolLogoUrl}" style="width: 22px; height: 22px; object-fit: contain; border-radius: 4px; ${printColor ? `background: ${theme.printStyles.schoolLogoBg};` : 'background: rgba(0,0,0,0.05);'} padding: 2px;" />`
+                      const schoolLogoHtml = schoolLogoUrl
+                        ? `<img src="${schoolLogoUrl}" style="width: 22px; height: 22px; object-fit: contain; border-radius: 4px; ${printColor ? `background: ${theme.printStyles.schoolLogoBg};` : 'background: rgba(0,0,0,0.05);'} padding: 2px;" />`
                         : `<div style="width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; background: #2563eb; border-radius: 4px; color: white;"><svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 10v6M2 10l10-5 10 5-10 5zM6 12v5c0 2 2 3 6 3s6-1 6-3v-5"/></svg></div>`;
 
                       const photoHtml = activeStudent.photoUrl
@@ -909,11 +940,11 @@ export default function RosterView({
                             <div style="display: flex; align-items: center; gap: 8px; border-bottom: 2px solid ${headerBorderColor}; padding-bottom: 8px; margin-bottom: 6px; position: relative; z-index: 1;">
                               ${schoolLogoHtml}
                               <div style="line-height: 1.1;">
-                                <div style="font-weight: 900; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; ${schoolNameColorStyle}">${activeStudent.schoolName || 'OAKRIDGE ACADEMY'}</div>
+                                <div style="font-weight: 900; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; ${schoolNameColorStyle}">${cardSchoolName}</div>
                                 <div style="font-size: 7px; ${labelColorStyle} font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">Student Member ID</div>
                               </div>
-                              <div style="font-size: 9px; font-weight: 900; ${badgeBgStyle} padding: 2px 6px; border-radius: 6px; margin-left: auto;">
-                                Grade ${activeStudent.grade}
+                              <div style="font-size: 9px; font-weight: 900; ${badgeBgStyle} padding: 2px 6px; border-radius: 6px; margin-left: auto; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                ${cardIdTitle}
                               </div>
                             </div>
                             
@@ -1036,8 +1067,8 @@ export default function RosterView({
                     </div>
                   </div>
 
-                  {/* Row 2: User ID & School Name */}
-                  <div className="grid grid-cols-2 gap-3">
+                  {/* Row 2: User ID */}
+                  <div className="grid grid-cols-1 gap-3">
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
                         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">User ID</label>
@@ -1066,27 +1097,15 @@ export default function RosterView({
                         className={`w-full bg-white border py-1.5 px-2.5 rounded-xl text-xs font-mono font-bold text-slate-700 focus:outline-none ${editId !== activeStudent.id ? 'border-emerald-300 bg-emerald-50/10 animate-pulse' : 'border-slate-200 focus:border-blue-500'}`}
                       />
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">School Name</label>
-                      <input
-                        type="text"
-                        value={editSchoolName}
-                        onChange={(e) => {
-                          setEditSchoolName(e.target.value);
-                          onUpdateStudent(activeStudent.id, { schoolName: e.target.value });
-                        }}
-                        className="w-full bg-white border border-slate-200 py-1.5 px-2.5 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
                   </div>
 
-                  {/* Row 3: Photo Uploads */}
-                  <div className="grid grid-cols-2 gap-3 pt-1">
+                  {/* Row 3: Student Photo */}
+                  <div className="grid grid-cols-1 gap-3 pt-1">
                     <div className="space-y-1">
                       <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Student Photo</label>
                       <div className="flex items-center gap-1.5">
                         <label className="flex-1 flex items-center justify-center gap-1 border border-slate-200 bg-white hover:bg-slate-50 text-[10px] font-bold py-1.5 px-2 rounded-xl cursor-pointer shadow-sm text-slate-600 transition-colors">
-                          <Upload className="w-3 h-3 text-slate-400" /> Upload
+                          <Upload className="w-3 h-3 text-slate-400" /> Choose & Crop
                           <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
                         </label>
                         {activeStudent.photoUrl && (
@@ -1101,24 +1120,6 @@ export default function RosterView({
                       </div>
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">School Logo</label>
-                      <div className="flex items-center gap-1.5">
-                        <label className="flex-1 flex items-center justify-center gap-1 border border-slate-200 bg-white hover:bg-slate-50 text-[10px] font-bold py-1.5 px-2 rounded-xl cursor-pointer shadow-sm text-slate-600 transition-colors">
-                          <Upload className="w-3 h-3 text-slate-400" /> Upload
-                          <input type="file" accept="image/*" onChange={handleSchoolLogoUpload} className="hidden" />
-                        </label>
-                        {activeStudent.schoolLogoUrl && (
-                          <button
-                            onClick={() => onUpdateStudent(activeStudent.id, { schoolLogoUrl: undefined })}
-                            className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100 px-2 py-1.5 rounded-xl text-[10px] font-bold transition-all shadow-sm"
-                            title="Remove Logo"
-                          >
-                            Reset
-                          </button>
-                        )}
-                      </div>
-                    </div>
                   </div>
 
                   {/* Row 4: Barcode / QR Selection & QR content options */}
@@ -1304,7 +1305,7 @@ export default function RosterView({
             <div className="p-6 overflow-y-auto flex-1 bg-slate-100/50">
               <div className="bg-white border border-slate-200/60 p-8 shadow-inner rounded-2xl max-w-[800px] mx-auto">
                 <div className="text-center mb-6 border-b border-dashed border-slate-200 pb-4">
-                  <h4 className="font-extrabold text-blue-700 uppercase tracking-widest text-xs">Oakridge Elementary School</h4>
+                  <h4 className="font-extrabold text-blue-700 uppercase tracking-widest text-xs">{cardSchoolName}</h4>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1"> Roster Card Sheet - Grade 5A</p>
                 </div>
 
@@ -1336,24 +1337,24 @@ export default function RosterView({
                         )}
 
                         <div className={`flex items-center gap-1.5 border-b pb-1.5 relative z-10 ${isColorStyle ? 'border-white/10' : 'border-slate-100'}`}>
-                          {student.schoolLogoUrl ? (
-                            <img src={student.schoolLogoUrl} className={`w-4 h-4 object-contain rounded ${isColorStyle ? studentTheme.logoBgColor : 'bg-slate-100 p-0.5'}`} alt="school logo" />
+                          {schoolLogoUrl ? (
+                            <img src={schoolLogoUrl} className={`w-4 h-4 object-contain rounded ${isColorStyle ? studentTheme.logoBgColor : 'bg-slate-100 p-0.5'}`} alt="school logo" />
                           ) : (
                             <School className={`w-3.5 h-3.5 ${isColorStyle ? studentTheme.accentSvgColor : 'text-blue-500'}`} />
                           )}
                           <span className={`text-[8px] uppercase tracking-wider font-extrabold truncate max-w-[130px] ${isColorStyle ? studentTheme.accentTextColor : 'text-blue-600'}`}>
-                            {student.schoolName || 'Oakridge Academy'}
+                            {cardSchoolName}
                           </span>
-                          <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded ml-auto border ${isColorStyle ? studentTheme.badgeBgColor : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
-                            Grade {student.grade}
+                          <span className={`max-w-[96px] truncate text-[8px] font-bold px-1.5 py-0.5 rounded ml-auto border ${isColorStyle ? studentTheme.badgeBgColor : 'bg-slate-50 border-slate-200 text-slate-600'}`} title={cardIdTitle}>
+                            {cardIdTitle}
                           </span>
                         </div>
                         
                         <div className="flex items-center gap-3 my-2 flex-1 relative z-10">
                           {student.photoUrl ? (
-                            <img src={student.photoUrl} className={`w-10 h-10 rounded-xl object-cover shrink-0 border ${isColorStyle ? 'border-white/10' : 'border-slate-100'}`} alt="profile photo" />
+                            <img src={student.photoUrl} className={`w-10 h-10 rounded-full object-cover shrink-0 border ${isColorStyle ? 'border-white/10' : 'border-slate-100'}`} alt={`${student.name} avatar`} />
                           ) : (
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 shadow-sm ${getAvatarColor(student.name)}`}>
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs shrink-0 shadow-sm ${getAvatarColor(student.name)}`}>
                               {student.name.split(' ').map(n=>n[0]).join('').slice(0,2)}
                             </div>
                           )}
@@ -1406,13 +1407,13 @@ export default function RosterView({
                         const studentTheme = CARD_THEMES.find(t => t.id === studentThemeId) || CARD_THEMES[0];
                         const isColorStyle = bulkPrintColorMode === 'color';
 
-                        const schoolLogoHtml = student.schoolLogoUrl
-                          ? `<img src="${student.schoolLogoUrl}" style="width: 22px; height: 22px; object-fit: contain; border-radius: 4px; ${isColorStyle ? `background: ${studentTheme.printStyles.schoolLogoBg};` : 'background: rgba(0,0,0,0.05);'} padding: 2px;" />`
+                        const schoolLogoHtml = schoolLogoUrl
+                          ? `<img src="${schoolLogoUrl}" style="width: 22px; height: 22px; object-fit: contain; border-radius: 4px; ${isColorStyle ? `background: ${studentTheme.printStyles.schoolLogoBg};` : 'background: rgba(0,0,0,0.05);'} padding: 2px;" />`
                           : `<div style="width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; background: #2563eb; border-radius: 4px; color: white;"><svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 10v6M2 10l10-5 10 5-10 5zM6 12v5c0 2 2 3 6 3s6-1 6-3v-5"/></svg></div>`;
 
                         const photoHtml = student.photoUrl
-                          ? `<img src="${student.photoUrl}" style="width: 44px; height: 44px; border-radius: 8px; object-fit: cover; border: 1.5px solid ${isColorStyle ? 'rgba(255,255,255,0.15)' : '#0f172a'};" />`
-                          : `<div style="width: 44px; height: 44px; border-radius: 8px; background: #2563eb; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px; font-family: sans-serif;">${initials}</div>`;
+                          ? `<img src="${student.photoUrl}" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 1.5px solid ${isColorStyle ? 'rgba(255,255,255,0.15)' : '#0f172a'};" />`
+                          : `<div style="width: 44px; height: 44px; border-radius: 50%; background: #2563eb; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px; font-family: sans-serif;">${initials}</div>`;
 
                         const barcodeHtml = (student.barcodeOption === 'both' || student.barcodeOption === 'barcode_only' || !student.barcodeOption)
                           ? `<div id="bulk-print-bc-${student.id}" style="flex: 1; max-width: 170px; ${isColorStyle ? 'background: #ffffff; border-radius: 8px; padding: 4px; display: flex; align-items: center; justify-content: center; box-sizing: border-box;' : ''}"></div>`
@@ -1443,11 +1444,11 @@ export default function RosterView({
                             <div style="display: flex; align-items: center; gap: 8px; border-bottom: 2px solid ${headerBorderColor}; padding-bottom: 8px; margin-bottom: 6px; position: relative; z-index: 1;">
                               ${schoolLogoHtml}
                               <div style="line-height: 1.1;">
-                                <div style="font-weight: 900; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; ${schoolNameColorStyle}">${student.schoolName || 'OAKRIDGE ACADEMY'}</div>
+                                <div style="font-weight: 900; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; ${schoolNameColorStyle}">${cardSchoolName}</div>
                                 <div style="font-size: 7px; ${labelColorStyle} font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">Student Member ID</div>
                               </div>
-                              <div style="font-size: 9px; font-weight: 900; ${badgeBgStyle} padding: 2px 6px; border-radius: 6px; margin-left: auto;">
-                                Grade ${student.grade}
+                              <div style="font-size: 9px; font-weight: 900; ${badgeBgStyle} padding: 2px 6px; border-radius: 6px; margin-left: auto; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                ${cardIdTitle}
                               </div>
                             </div>
                             
@@ -1541,6 +1542,73 @@ export default function RosterView({
                   Print Sheet
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {photoCrop && activeStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4" role="dialog" aria-modal="true" aria-labelledby="photo-crop-title">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
+              <div>
+                <h3 id="photo-crop-title" className="text-sm font-bold text-slate-900">Center Student Photo</h3>
+                <p className="mt-1 text-xs text-slate-500">Drag to place the face in the circle, then adjust the zoom.</p>
+              </div>
+              <button onClick={() => setPhotoCrop(null)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Cancel photo crop">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <div
+                className="relative mx-auto overflow-hidden rounded-full bg-slate-100 shadow-inner touch-none cursor-move"
+                style={{ width: cropSize, height: cropSize }}
+                onPointerDown={(event) => {
+                  photoDragStart.current = { x: event.clientX, y: event.clientY, offsetX: photoCrop.offsetX, offsetY: photoCrop.offsetY };
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                }}
+                onPointerMove={(event) => {
+                  if (!photoDragStart.current) return;
+                  const start = photoDragStart.current;
+                  setPhotoCrop((current) => current && {
+                    ...current,
+                    offsetX: start.offsetX + event.clientX - start.x,
+                    offsetY: start.offsetY + event.clientY - start.y
+                  });
+                }}
+                onPointerUp={() => { photoDragStart.current = null; }}
+                onPointerCancel={() => { photoDragStart.current = null; }}
+              >
+                <img
+                  src={photoCrop.src}
+                  className="h-full w-full object-cover select-none pointer-events-none"
+                  style={{ transform: `translate(${photoCrop.offsetX}px, ${photoCrop.offsetY}px) scale(${photoCrop.zoom})` }}
+                  alt="Crop preview"
+                />
+              </div>
+
+              <div className="mt-5 space-y-2">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                  <label htmlFor="photo-zoom">Zoom</label>
+                  <button onClick={() => setPhotoCrop((current) => current && { ...current, zoom: 1, offsetX: 0, offsetY: 0 })} className="text-blue-600 hover:text-blue-700">Recenter</button>
+                </div>
+                <input
+                  id="photo-zoom"
+                  type="range"
+                  min="1"
+                  max="3"
+                  step="0.05"
+                  value={photoCrop.zoom}
+                  onChange={(event) => setPhotoCrop((current) => current && { ...current, zoom: Number(event.target.value) })}
+                  className="w-full accent-blue-600"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-4">
+              <button onClick={() => setPhotoCrop(null)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+              <button onClick={saveCroppedPhoto} className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700">Use Photo</button>
             </div>
           </div>
         </div>

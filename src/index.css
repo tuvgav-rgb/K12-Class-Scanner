@@ -72,6 +72,45 @@
   display: none;
 }
 
+@media (max-height: 600px) {
+  .app-sidebar-header {
+    padding: 0.75rem;
+  }
+
+  .app-sidebar-header .sidebar-title-row {
+    margin-bottom: 0.5rem;
+  }
+
+  .app-sidebar-nav {
+    padding-top: 0.375rem;
+    padding-bottom: 0.375rem;
+  }
+
+  .app-sidebar-nav .sidebar-menu-label {
+    margin-bottom: 0.25rem;
+  }
+
+  .app-sidebar-nav .sidebar-navigation-button {
+    min-height: 24px;
+    padding-top: 0.125rem;
+    padding-bottom: 0.125rem;
+    font-size: 0.8125rem;
+  }
+
+  .app-sidebar-logo {
+    margin-top: 0.25rem;
+    padding-top: 0.5rem;
+  }
+
+  .app-sidebar-logo img {
+    max-height: 45px;
+  }
+
+  .app-sidebar-footer {
+    display: none;
+  }
+}
+
 @media print {
   html, body {
     background: white !important;

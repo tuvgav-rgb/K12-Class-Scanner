@@ -9,6 +9,8 @@ export interface ClassSession {
   grade?: string;
   subject?: string;
   schoolName?: string;
+  schoolLogoUrl?: string;
+  idCardTitle?: string;
 }
 
 export interface Student {
@@ -52,12 +54,15 @@ export interface StoreItem {
   category: 'Privileges' | 'Supplies' | 'Snacks' | 'Prizes';
   iconName: string; // Lucide icon name
   imageUrl?: string; // Optional image url or Base64 encoded image
+  packageBarcode?: string; // Barcode printed on a packaged store item
   archived?: boolean; // Is it archived/saved for later?
   wasArchived?: boolean; // Returns to the library when removed from the active catalog
 }
 
 export interface Transaction {
   id: string;
+  receiptId?: string;
+  quantity?: number;
   studentId: string;
   itemId: string;
   timestamp: string;

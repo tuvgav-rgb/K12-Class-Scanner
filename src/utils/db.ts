@@ -8,10 +8,6 @@ import trophyImage from '../assets/rewards/trophy.jpg';
 import effortImage from '../assets/rewards/effort.jpg';
 import bonusImage from '../assets/rewards/bonus.jpg';
 
-const DEFAULT_CLASSES: ClassSession[] = [
-  { id: 'default_class', name: 'My Classroom' }
-];
-
 export const DEFAULT_STORE_ITEMS: StoreItem[] = [
   {
     id: 'ITM101',
@@ -195,14 +191,8 @@ export function getClasses(): ClassSession[] {
     return migratedClasses;
   }
 
-  // Create default classes
-  const defaultClasses = DEFAULT_CLASSES;
-  localStorage.setItem('class_scanner_classes', JSON.stringify(defaultClasses));
-  localStorage.setItem('class_scanner_active_class_id', 'default_class');
-
-  initializeClassData('default_class');
-
-  return defaultClasses;
+  // A brand-new installation starts with the guided class setup flow.
+  return [];
 }
 
 export function saveClasses(classes: ClassSession[]) {
@@ -213,7 +203,7 @@ export function getActiveClassId(): string {
   const activeId = localStorage.getItem('class_scanner_active_class_id');
   if (activeId) return activeId;
   const classes = getClasses();
-  return classes[0]?.id || 'default_class';
+  return classes[0]?.id || '';
 }
 
 export function saveActiveClassId(id: string) {

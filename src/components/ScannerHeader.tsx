@@ -42,7 +42,9 @@ export default function ScannerHeader({
     const timer = setTimeout(() => {
       const isStudentId = students.some((s) => s.id.toUpperCase() === code);
       const isAssignmentId = assignments.some((a) => a.id.toUpperCase() === code);
-      const isItemId = storeItems.some((i) => i.id.toUpperCase() === code);
+      const isItemId = storeItems.some((i) =>
+        i.id.toUpperCase() === code || i.packageBarcode?.trim().toUpperCase() === code
+      );
 
       // Check combined code (e.g. STU1001_ASM1001)
       let isCombinedCode = false;

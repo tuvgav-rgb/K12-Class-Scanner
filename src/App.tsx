@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -33,6 +33,8 @@ import ReportsView from './components/ReportsView';
 import RewardsView from './components/RewardsView';
 import ManageClassesView from './components/ManageClassesView';
 import CelebrationOverlay from './components/CelebrationOverlay';
+import FirstRunWelcome from './components/FirstRunWelcome';
+import StoreScanOverlay from './components/StoreScanOverlay';
 // @ts-ignore
 import k12Logo from './k12 - color logo 3 - with the word CHINUCH - Perfected - no background - no glow.png';
 
@@ -41,11 +43,16 @@ type TabType = 'Dashboard' | 'Roster & Codes' | 'Assignments' | 'Class Store' | 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<TabType>('Dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showFirstRun, setShowFirstRun] = useState(false);
+  const [isPriceCheckMode, setIsPriceCheckMode] = useState(false);
+  const [isCashierMode, setIsCashierMode] = useState(false);
+  const [cashierCart, setCashierCart] = useState<{ itemId: string; quantity: number; price: number }[]>([]);
 
   // Expose entire state engine
   const {
     classes,
     activeClassId,
+    isInitialized,
     setActiveClassId,
     createClass,
     deleteClass,
@@ -66,19 +73,24 @@ export default function App() {
     setLoadedSessionAssignmentId,
     toasts,
     removeToast,
+    storeScanResult,
+    setStoreScanResult,
     adjustStudentPoints,
     addStudent,
+    importStudents,
     deleteStudent,
     updateStudent,
     addAssignment,
     deleteAssignment,
     toggleSubmission,
     addStoreItem,
+    updateStoreItem,
     archiveStoreItem,
     restoreStoreItem,
     deleteStoreItem,
     permanentlyDeleteStoreItem,
     checkoutStoreItemDirectly,
+    checkoutCashierCart,
     triggerScan,
     addSubject,
     deleteSubject,
@@ -97,6 +109,27 @@ export default function App() {
     updateReward,
     awardRewardToStudent
   } = useClassState();
+
+  useEffect(() => {
+    if (isInitialized && classes.length === 0) {
+      setShowFirstRun(true);
+    }
+  }, [isInitialized, classes.length]);
+
+  if (!isInitialized) {
+    return <div className="min-h-screen bg-slate-100" />;
+  }
+
+  if (showFirstRun) {
+    return (
+      <FirstRunWelcome
+        onCreateClass={createClass}
+        onAddStudent={addStudent}
+        onImportStudents={importStudents}
+        onComplete={() => setShowFirstRun(false)}
+      />
+    );
+  }
 
   const activeStudent = students.find((s) => s.id === activeStudentId) || null;
 
@@ -139,13 +172,13 @@ export default function App() {
       </AnimatePresence>
 
       <aside
-        className={`fixed inset-y-0 left-0 w-64 bg-white text-slate-800 border-r border-slate-200 flex flex-col justify-between z-40 transform transition-transform duration-300 ease-out shrink-0 lg:translate-x-0 lg:static lg:h-screen ${
+        className={`app-sidebar fixed inset-y-0 left-0 w-64 bg-white text-slate-800 border-r border-slate-200 flex flex-col justify-between z-40 transform transition-transform duration-300 ease-out shrink-0 lg:translate-x-0 lg:static lg:h-screen ${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Sidebar Header branding */}
-        <div className="p-6 border-b border-slate-100">
-          <div className="flex items-center gap-3 mb-4.5">
+        <div className="app-sidebar-header p-4 border-b border-slate-100">
+          <div className="sidebar-title-row flex items-center gap-3 mb-3">
             <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-sm">
               <Scan className="w-5 h-5 text-white animate-pulse" />
             </div>
@@ -175,9 +208,9 @@ export default function App() {
         </div>
 
         {/* Navigation list */}
-        <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto flex flex-col">
+        <nav className="app-sidebar-nav flex-1 px-4 py-3 space-y-1 overflow-y-auto flex flex-col">
           <div className="space-y-1">
-            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest block pl-3 mb-2">Main Menu</span>
+            <span className="sidebar-menu-label text-[10px] uppercase font-bold text-slate-400 tracking-widest block pl-3 mb-2">Main Menu</span>
             {navigationItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentTab === item.name;
@@ -189,7 +222,7 @@ export default function App() {
                     setCurrentTab(item.name as TabType);
                     setIsSidebarOpen(false);
                   }}
-                  className={`w-full flex items-center gap-3.5 px-4.5 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer relative group ${
+                  className={`sidebar-navigation-button w-full flex items-center gap-3.5 px-4.5 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer relative group ${
                     isActive
                       ? 'bg-blue-50 text-blue-700 shadow-sm'
                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -208,30 +241,18 @@ export default function App() {
           </div>
 
           {/* Centered Logo under menu */}
-          <div className="mt-5 pt-5 pb-1 flex flex-col items-center justify-center border-t border-slate-100/60">
+          <div className="app-sidebar-logo mt-2 pt-3 pb-1 flex flex-col items-center justify-center border-t border-slate-100/60">
             <img 
               src={k12Logo} 
               alt="K12 Chinuch Logo" 
-              className="max-w-[220px] max-h-32 w-auto object-contain" 
+              className="max-w-[198px] max-h-[115px] w-auto object-contain" 
               referrerPolicy="no-referrer"
             />
           </div>
         </nav>
 
         {/* Sidebar footer settings & credits */}
-        <div className="p-4 mt-auto border-t border-slate-100 space-y-4">
-          {/* Scanner Status Box */}
-          <div className="bg-slate-900 rounded-xl p-4 text-white">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1.5">Scanner Status</p>
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-              </span>
-              <span className="text-sm font-semibold">HID USB Connected</span>
-            </div>
-          </div>
-
+        <div className="app-sidebar-footer p-4 mt-auto border-t border-slate-100">
           <div className="flex items-center justify-between text-[11px] text-slate-400 pl-1 font-semibold">
             <span>v1.0.0 (WebView2)</span>
             <span className="hover:text-slate-700 cursor-pointer flex items-center gap-0.5 transition-colors">
@@ -268,7 +289,25 @@ export default function App() {
 
         {/* Global Prominent Scan Console header */}
         <ScannerHeader
-          onScan={(code) => triggerScan(code, currentTab)}
+          onScan={(code) => {
+            if (isCashierMode && currentTab === 'Class Store') {
+              const item = storeItems.find((candidate) =>
+                candidate.id.trim().toUpperCase() === code.trim().toUpperCase() ||
+                candidate.packageBarcode?.trim().toUpperCase() === code.trim().toUpperCase()
+              );
+              if (item) {
+                setCashierCart((current) => {
+                  const existing = current.find((line) => line.itemId === item.id);
+                  return existing
+                    ? current.map((line) => line.itemId === item.id ? { ...line, quantity: line.quantity + 1 } : line)
+                    : [...current, { itemId: item.id, quantity: 1, price: item.cost }];
+                });
+                return;
+              }
+            }
+            triggerScan(code, currentTab, isPriceCheckMode);
+            if (isPriceCheckMode) setIsPriceCheckMode(false);
+          }}
           activeStudentName={activeStudent?.name}
           activeStudentPoints={activeStudent?.points}
           onClearActiveStudent={() => setActiveStudentId(null)}
@@ -307,6 +346,9 @@ export default function App() {
               {currentTab === 'Roster & Codes' && (
                 <RosterView
                   students={students}
+                  schoolName={activeClass?.schoolName}
+                  schoolLogoUrl={activeClass?.schoolLogoUrl}
+                  idCardTitle={activeClass?.idCardTitle}
                   onAddStudent={addStudent}
                   onDeleteStudent={deleteStudent}
                   onUpdateStudent={updateStudent}
@@ -341,11 +383,25 @@ export default function App() {
                   activeStudentId={activeStudentId}
                   onSelectStudent={setActiveStudentId}
                   onAddStoreItem={addStoreItem}
+                  onUpdateStoreItem={updateStoreItem}
                   onArchiveStoreItem={archiveStoreItem}
                   onRestoreStoreItem={restoreStoreItem}
                   onDeleteStoreItem={deleteStoreItem}
                   onPermanentlyDeleteStoreItem={permanentlyDeleteStoreItem}
                   onCheckout={checkoutStoreItemDirectly}
+                  isPriceCheckMode={isPriceCheckMode}
+                  onTogglePriceCheck={() => {
+                    setIsCashierMode(false);
+                    setIsPriceCheckMode((current) => !current);
+                  }}
+                  isCashierMode={isCashierMode}
+                  onToggleCashierMode={() => {
+                    setIsPriceCheckMode(false);
+                    setIsCashierMode((current) => !current);
+                  }}
+                  cashierCart={cashierCart}
+                  onUpdateCashierCart={setCashierCart}
+                  onCheckoutCashierCart={checkoutCashierCart}
                 />
               )}
 
@@ -397,6 +453,11 @@ export default function App() {
       <CelebrationOverlay
         info={lastAwardedInfo}
         onClose={() => setLastAwardedInfo(null)}
+      />
+
+      <StoreScanOverlay
+        result={storeScanResult}
+        onClose={() => setStoreScanResult(null)}
       />
 
       {/* 4. Sliding Floating Toast Notification Engine (Bottom-Right corner) */}

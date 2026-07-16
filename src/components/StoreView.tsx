@@ -16,12 +16,20 @@ interface StoreViewProps {
   storeItems: StoreItem[];
   activeStudentId: string | null;
   onSelectStudent: (studentId: string | null) => void;
-  onAddStoreItem: (name: string, cost: number, description: string, stock: number, category: StoreItem['category'], iconName: string, imageUrl?: string) => void;
+  onAddStoreItem: (name: string, cost: number, description: string, stock: number, category: StoreItem['category'], iconName: string, imageUrl?: string, packageBarcode?: string) => boolean;
+  onUpdateStoreItem: (itemId: string, updates: Pick<StoreItem, 'name' | 'cost' | 'description' | 'stock' | 'category' | 'iconName'> & { imageUrl?: string; packageBarcode?: string }) => boolean;
   onArchiveStoreItem: (itemId: string) => void;
   onRestoreStoreItem: (itemId: string) => void;
   onDeleteStoreItem: (itemId: string) => void;
   onPermanentlyDeleteStoreItem: (itemId: string) => void;
   onCheckout: (studentId: string, itemId: string) => boolean;
+  isPriceCheckMode: boolean;
+  onTogglePriceCheck: () => void;
+  isCashierMode: boolean;
+  onToggleCashierMode: () => void;
+  cashierCart: { itemId: string; quantity: number; price: number }[];
+  onUpdateCashierCart: React.Dispatch<React.SetStateAction<{ itemId: string; quantity: number; price: number }[]>>;
+  onCheckoutCashierCart: (studentId: string, lines: { itemId: string; quantity: number; price: number }[]) => boolean;
 }
 
 export default function StoreView({
@@ -30,11 +38,19 @@ export default function StoreView({
   activeStudentId,
   onSelectStudent,
   onAddStoreItem,
+  onUpdateStoreItem,
   onArchiveStoreItem,
   onRestoreStoreItem,
   onDeleteStoreItem,
   onPermanentlyDeleteStoreItem,
-  onCheckout
+  onCheckout,
+  isPriceCheckMode,
+  onTogglePriceCheck,
+  isCashierMode,
+  onToggleCashierMode,
+  cashierCart,
+  onUpdateCashierCart,
+  onCheckoutCashierCart
 }: StoreViewProps) {
   // UI states
   const [showAddForm, setShowAddForm] = useState(false);
@@ -46,11 +62,42 @@ export default function StoreView({
   const [newItemCategory, setNewItemCategory] = useState<StoreItem['category']>('Privileges');
   const [newItemIcon, setNewItemIcon] = useState('Gift');
   const [newItemImage, setNewItemImage] = useState('');
+  const [newItemBarcode, setNewItemBarcode] = useState('');
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [storeCodeDisplayOption, setStoreCodeDisplayOption] = useState<'both' | 'barcode' | 'qr'>('both');
   const [selectedZoomItem, setSelectedZoomItem] = useState<StoreItem | null>(null);
+  const [requirePricePassword, setRequirePricePassword] = useState(false);
+  const [pricePassword, setPricePassword] = useState('');
+  const [arePricesUnlocked, setArePricesUnlocked] = useState(false);
 
   const activeStoreItems = storeItems.filter((item) => !item.archived);
   const archivedStoreItems = storeItems.filter((item) => item.archived);
+
+  const resetItemForm = () => {
+    setNewItemName('');
+    setNewItemCost(50);
+    setNewItemDesc('');
+    setNewItemStock(10);
+    setNewItemCategory('Privileges');
+    setNewItemIcon('Gift');
+    setNewItemImage('');
+    setNewItemBarcode('');
+    setEditingItemId(null);
+  };
+
+  const startEditingItem = (item: StoreItem) => {
+    setNewItemName(item.name);
+    setNewItemCost(item.cost);
+    setNewItemDesc(item.description);
+    setNewItemStock(item.stock);
+    setNewItemCategory(item.category);
+    setNewItemIcon(item.iconName);
+    setNewItemImage(item.imageUrl || '');
+    setNewItemBarcode(item.packageBarcode || '');
+    setEditingItemId(item.id);
+    setShowAddForm(true);
+    setSelectedZoomItem(null);
+  };
 
   const handleItemImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -64,6 +111,20 @@ export default function StoreView({
   };
 
   const activeStudent = students.find((s) => s.id === activeStudentId) || null;
+  const cashierTotal = cashierCart.reduce((sum, line) => sum + line.price * line.quantity, 0);
+
+  const updateCashierPrice = (itemId: string, price: number) => {
+    onUpdateCashierCart((current) => current.map((line) => line.itemId === itemId ? { ...line, price } : line));
+  };
+
+  const unlockCashierPrices = () => {
+    if (!requirePricePassword || !pricePassword) {
+      setArePricesUnlocked(true);
+      return;
+    }
+    const enteredPassword = window.prompt('Enter the temporary price-change password:');
+    setArePricesUnlocked(enteredPassword === pricePassword);
+  };
 
   const downloadQRCode = (item: StoreItem) => {
     QRCode.toDataURL(item.id, { width: 400, margin: 1 })
@@ -496,21 +557,31 @@ export default function StoreView({
     e.preventDefault();
     if (!newItemName.trim()) return;
 
-    onAddStoreItem(
-      newItemName,
-      newItemCost,
-      newItemDesc,
-      newItemStock,
-      newItemCategory,
-      newItemIcon,
-      newItemImage || undefined
-    );
+    const wasAdded = editingItemId
+      ? onUpdateStoreItem(editingItemId, {
+          name: newItemName,
+          cost: newItemCost,
+          description: newItemDesc,
+          stock: newItemStock,
+          category: newItemCategory,
+          iconName: newItemIcon,
+          imageUrl: newItemImage || undefined,
+          packageBarcode: newItemBarcode
+        })
+      : onAddStoreItem(
+          newItemName,
+          newItemCost,
+          newItemDesc,
+          newItemStock,
+          newItemCategory,
+          newItemIcon,
+          newItemImage || undefined,
+          newItemBarcode
+        );
 
-    setNewItemName('');
-    setNewItemDesc('');
-    setNewItemCost(50);
-    setNewItemStock(10);
-    setNewItemImage('');
+    if (!wasAdded) return;
+
+    resetItemForm();
     setShowAddForm(false);
   };
 
@@ -554,7 +625,15 @@ export default function StoreView({
 
           <button
             type="button"
-            onClick={() => setShowAddForm(!showAddForm)}
+            onClick={() => {
+              if (showAddForm) {
+                resetItemForm();
+                setShowAddForm(false);
+              } else {
+                resetItemForm();
+                setShowAddForm(true);
+              }
+            }}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-4 rounded-xl text-xs shadow-md shadow-blue-100 transition-all cursor-pointer hover:scale-[1.02]"
           >
             <Icons.PlusCircle className="w-4 h-4" />
@@ -570,7 +649,7 @@ export default function StoreView({
           className="bg-white border border-slate-200/85 p-5 rounded-2xl shadow-sm space-y-4 max-w-2xl"
         >
           <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2 border-b border-slate-100 pb-2">
-            <Icons.ShoppingBag className="w-4 h-4 text-blue-500" /> Create Reward Item
+            <Icons.ShoppingBag className="w-4 h-4 text-blue-500" /> {editingItemId ? 'Edit Store Item' : 'Create Reward Item'}
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -605,7 +684,6 @@ export default function StoreView({
               <input
                 type="number"
                 min="5"
-                max="500"
                 value={newItemCost}
                 onChange={e => setNewItemCost(parseInt(e.target.value) || 20)}
                 required
@@ -623,6 +701,22 @@ export default function StoreView({
                 required
                 className="w-full bg-slate-50 border border-slate-200 py-2.5 px-3 rounded-xl text-xs focus:outline-none focus:border-blue-500 focus:bg-white text-slate-800 font-medium"
               />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Package Barcode (Optional)</label>
+              <input
+                type="text"
+                value={newItemBarcode}
+                onChange={e => setNewItemBarcode(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') e.preventDefault();
+                }}
+                placeholder="Click here, then scan the barcode on the package"
+                className="w-full bg-slate-50 border border-slate-200 py-2.5 px-3 rounded-xl text-xs font-mono focus:outline-none focus:border-blue-500 focus:bg-white text-slate-800"
+                autoComplete="off"
+              />
+              <p className="text-[10px] text-slate-400 leading-snug">Use a USB or Bluetooth scanner while this field is selected. The package barcode will work at checkout.</p>
             </div>
 
             <div className="space-y-1">
@@ -689,8 +783,7 @@ export default function StoreView({
               type="button"
               onClick={() => {
                 setShowAddForm(false);
-                setNewItemName('');
-                setNewItemDesc('');
+                resetItemForm();
               }}
               className="py-2 px-4 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-100 transition-all cursor-pointer"
             >
@@ -700,7 +793,7 @@ export default function StoreView({
               type="submit"
               className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-5 rounded-xl text-xs shadow-md shadow-blue-100 transition-all cursor-pointer"
             >
-              Onboard Store Item
+              {editingItemId ? 'Save Changes' : 'Onboard Store Item'}
             </button>
           </div>
         </form>
@@ -828,8 +921,20 @@ export default function StoreView({
                       </div>
                     </div>
 
-                    {/* Hover controls for save/delete */}
-                    <div className="absolute right-3.5 top-3 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
+                    {/* Item controls */}
+                    <div className="absolute right-3.5 top-3 flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startEditingItem(item);
+                        }}
+                        className="flex items-center gap-1 bg-white hover:bg-amber-50 text-slate-500 hover:text-amber-700 border border-slate-200 hover:border-amber-200 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors shadow-sm"
+                        title="Edit Store Item"
+                      >
+                        <Icons.Pencil className="w-3 h-3" />
+                        Edit
+                      </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -939,6 +1044,15 @@ export default function StoreView({
                           <div className="flex items-center gap-2 border-t border-slate-100 pt-2 mt-0.5">
                             <button
                               type="button"
+                              onClick={() => startEditingItem(item)}
+                              className="flex items-center gap-1 bg-white hover:bg-amber-50 text-slate-500 hover:text-amber-700 border border-slate-200 hover:border-amber-200 px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                              title="Edit Store Item"
+                            >
+                              <Icons.Pencil className="w-3 h-3" />
+                              Edit
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => onRestoreStoreItem(item.id)}
                               className="flex-1 flex items-center justify-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1 px-2.5 rounded-lg text-[10px] transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
                             >
@@ -969,9 +1083,101 @@ export default function StoreView({
           <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider pl-1">POS Checkout</span>
           
           <div className="bg-white border border-slate-200/85 rounded-3xl p-6 shadow-sm space-y-6">
-            <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2 border-b border-slate-100 pb-3">
-              <Icons.QrCode className="w-4.5 h-4.5 text-blue-500" /> Active Transaction
-            </h3>
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <Icons.QrCode className="w-4.5 h-4.5 text-blue-500" /> Active Transaction
+              </h3>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={onTogglePriceCheck}
+                  className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-bold transition-colors ${
+                    isPriceCheckMode
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                  }`}
+                >
+                  <Icons.Search className="h-3.5 w-3.5" />
+                  {isPriceCheckMode ? 'Scan Price' : 'Price Check'}
+                </button>
+                <button
+                  type="button"
+                  onClick={onToggleCashierMode}
+                  className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-bold transition-colors ${
+                    isCashierMode
+                      ? 'border-violet-600 bg-violet-600 text-white'
+                      : 'border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100'
+                  }`}
+                >
+                  <Icons.ShoppingCart className="h-3.5 w-3.5" />
+                  Cashier
+                </button>
+              </div>
+            </div>
+
+            {isCashierMode ? (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5">
+                  <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-violet-800">
+                    <Icons.ReceiptText className="h-4 w-4" /> Cashier Mode
+                  </div>
+                  <p className="mt-1 text-[10px] font-medium leading-relaxed text-violet-700">Scan item or package barcodes to build a cart. Nothing is charged until you confirm the sale.</p>
+                </div>
+
+                {activeStudent ? (
+                  <div className="flex items-center gap-2.5 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-xs font-bold text-white">{activeStudent.name.split(' ').map((name) => name[0]).join('').slice(0, 2)}</div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-extrabold text-blue-900">{activeStudent.name}</p>
+                      <p className="text-[10px] font-semibold text-blue-600">{activeStudent.points.toLocaleString()} points available</p>
+                    </div>
+                    <button type="button" onClick={() => onSelectStudent(null)} className="text-xs font-bold text-blue-400 hover:text-blue-700" title="Change buyer">Change</button>
+                  </div>
+                ) : (
+                  <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-[10px] font-bold text-amber-800">Select a student before confirming the cart.</p>
+                    <select onChange={(event) => onSelectStudent(event.target.value || null)} defaultValue="" className="w-full rounded-lg border border-amber-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-amber-400">
+                      <option value="">Choose student</option>
+                      {students.map((student) => <option key={student.id} value={student.id}>{student.name} ({student.points} pts)</option>)}
+                    </select>
+                  </div>
+                )}
+
+                <div className="max-h-[230px] space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/70 p-2">
+                  {cashierCart.length === 0 ? (
+                    <div className="py-7 text-center text-slate-400"><Icons.ScanLine className="mx-auto mb-2 h-6 w-6" /><p className="text-[10px] font-semibold">Scan items to add them to this cart.</p></div>
+                  ) : cashierCart.map((line) => {
+                    const item = storeItems.find((candidate) => candidate.id === line.itemId);
+                    if (!item) return null;
+                    return (
+                      <div key={line.itemId} className="flex items-center gap-2 rounded-lg bg-white p-2 shadow-sm">
+                        {item.imageUrl ? <img src={item.imageUrl} alt="" className="h-9 w-9 rounded-md object-cover" /> : <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-400"><Icons.Gift className="h-4 w-4" /></div>}
+                        <div className="min-w-0 flex-1"><p className="truncate text-[11px] font-bold text-slate-800">{item.name}</p><p className="text-[9px] font-semibold text-slate-400">Qty {line.quantity} · {item.stock} in stock</p></div>
+                        <div className="w-20"><input aria-label={`Temporary price for ${item.name}`} type="number" min="0" value={line.price} disabled={requirePricePassword && !arePricesUnlocked} onChange={(event) => updateCashierPrice(item.id, Math.max(0, Number(event.target.value) || 0))} className="w-full rounded-md border border-slate-200 bg-slate-50 px-1.5 py-1 text-right text-[11px] font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60" /></div>
+                        <button type="button" onClick={() => onUpdateCashierCart((current) => current.filter((candidate) => candidate.itemId !== item.id))} className="rounded-md p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title={`Remove ${item.name} from cart`}><Icons.Trash2 className="h-4 w-4" /></button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+                  <label className="flex items-center gap-2 text-[10px] font-bold text-slate-600"><input type="checkbox" checked={requirePricePassword} onChange={(event) => { setRequirePricePassword(event.target.checked); setArePricesUnlocked(false); }} /> Require password for temporary prices</label>
+                  {requirePricePassword && <input type="password" value={pricePassword} onChange={(event) => { setPricePassword(event.target.value); setArePricesUnlocked(false); }} placeholder="Set temporary price password" className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-xs focus:outline-none focus:border-violet-500" />}
+                  {requirePricePassword && <button type="button" onClick={unlockCashierPrices} className="text-[10px] font-bold text-violet-700 hover:text-violet-900">{arePricesUnlocked ? 'Temporary prices unlocked' : 'Unlock temporary prices'}</button>}
+                </div>
+
+                <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                  <button type="button" onClick={() => onUpdateCashierCart([])} disabled={cashierCart.length === 0} className="text-[10px] font-bold text-slate-500 hover:text-rose-600 disabled:opacity-40">Clear cart</button>
+                  <div className="text-right"><p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Cart total</p><p className="text-lg font-black text-slate-900">{cashierTotal.toLocaleString()} <span className="text-xs text-slate-500">pts</span></p></div>
+                </div>
+                <button type="button" disabled={!activeStudent || cashierCart.length === 0} onClick={() => { if (activeStudent && onCheckoutCashierCart(activeStudent.id, cashierCart)) onUpdateCashierCart([]); }} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-bold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"><Icons.CheckCircle2 className="h-4 w-4" /> Confirm purchase</button>
+              </div>
+            ) : <>
+            {isPriceCheckMode && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-center text-[10px] font-semibold text-blue-800">
+                Price check ready. Scan an item or package barcode; no points or stock will change.
+              </div>
+            )}
 
             {/* Buyer status box */}
             {activeStudent ? (
@@ -1071,6 +1277,7 @@ export default function StoreView({
                 </div>
               </div>
             )}
+            </>}
           </div>
         </div>
 
