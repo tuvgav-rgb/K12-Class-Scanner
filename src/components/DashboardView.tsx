@@ -37,6 +37,7 @@ export default function DashboardView({
   onSelectStudent
 }: DashboardViewProps) {
   const [logFilter, setLogFilter] = useState<'all' | 'success' | 'error'>('all');
+  const [leaderboardMode, setLeaderboardMode] = useState<'current' | 'total'>('current');
 
   // Calculate high-level stats
   const totalStudents = students.length;
@@ -75,10 +76,11 @@ export default function DashboardView({
 
   // Top 5 earning students for leaderboards
   const topStudents = [...students]
-    .sort((a, b) => b.points - a.points)
+    .sort((a, b) => (leaderboardMode === 'current' ? b.points - a.points : b.totalPoints - a.totalPoints))
     .slice(0, 5);
 
-  const maxStudentPoints = topStudents.length > 0 ? topStudents[0].points : 100;
+  const getLeaderboardPoints = (student: Student) => leaderboardMode === 'current' ? student.points : student.totalPoints;
+  const maxStudentPoints = topStudents.length > 0 ? getLeaderboardPoints(topStudents[0]) : 100;
 
   // Donut chart math
   const radius = 35;
@@ -244,9 +246,15 @@ export default function DashboardView({
 
         {/* Point Leaderboard Bar Graph (7 Cols) */}
         <div className="lg:col-span-7 bg-white p-6 rounded-3xl border border-slate-200/85 shadow-sm flex flex-col justify-between">
-          <div>
-            <h3 className="font-bold text-slate-800 text-base">Points Leaderboard</h3>
-            <p className="text-xs text-slate-500 font-medium mb-4">Top 5 students in Points Classroom Economy</p>
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="font-bold text-slate-800 text-base">Points Leaderboard</h3>
+              <p className="text-xs text-slate-500 font-medium">{leaderboardMode === 'current' ? 'Current spendable balances' : 'Total points earned over time'}</p>
+            </div>
+            <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-1" role="group" aria-label="Leaderboard points type">
+              <button type="button" onClick={() => setLeaderboardMode('current')} className={`rounded-md px-2.5 py-1 text-[10px] font-bold transition-colors ${leaderboardMode === 'current' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Current</button>
+              <button type="button" onClick={() => setLeaderboardMode('total')} className={`rounded-md px-2.5 py-1 text-[10px] font-bold transition-colors ${leaderboardMode === 'total' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Total earned</button>
+            </div>
           </div>
 
           {totalStudents === 0 ? (
@@ -257,10 +265,11 @@ export default function DashboardView({
           ) : (
             <div className="space-y-4 my-2 flex-1 flex flex-col justify-center">
               {topStudents.map((student, idx) => {
-                const widthPercent = maxStudentPoints > 0 
-                  ? Math.max(8, (student.points / maxStudentPoints) * 100) 
+                const leaderboardPoints = getLeaderboardPoints(student);
+                const widthPercent = maxStudentPoints > 0
+                  ? Math.max(8, (leaderboardPoints / maxStudentPoints) * 100)
                   : 10;
-                
+
                 // Color grades based on position
                 const colors = [
                   'bg-gradient-to-r from-amber-400 to-amber-500 shadow-amber-100', // Gold
@@ -300,7 +309,7 @@ export default function DashboardView({
 
                     {/* Points value */}
                     <span className="w-16 text-right text-xs font-bold text-slate-800">
-                      {student.points} <span className="text-[10px] text-slate-400 font-medium">pts</span>
+                      {leaderboardPoints} <span className="text-[10px] text-slate-400 font-medium">pts</span>
                     </span>
                   </div>
                 );

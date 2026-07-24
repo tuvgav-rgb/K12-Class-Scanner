@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Scan, Keyboard, HelpCircle } from 'lucide-react';
-import { Student, Assignment, StoreItem } from '../types';
+import { Scan, HelpCircle, Redo2, Undo2 } from 'lucide-react';
+import { Student, Assignment, StoreItem, RewardItem } from '../types';
 
 interface ScannerHeaderProps {
   onScan: (rawCode: string) => void;
@@ -16,6 +16,11 @@ interface ScannerHeaderProps {
   students: Student[];
   assignments: Assignment[];
   storeItems: StoreItem[];
+  rewards: RewardItem[];
+  canUndoScan: boolean;
+  canRedoScan: boolean;
+  onUndoScan: () => void;
+  onRedoScan: () => void;
 }
 
 export default function ScannerHeader({
@@ -26,7 +31,12 @@ export default function ScannerHeader({
   currentTab,
   students,
   assignments,
-  storeItems
+  storeItems,
+  rewards,
+  canUndoScan,
+  canRedoScan,
+  onUndoScan,
+  onRedoScan
 }: ScannerHeaderProps) {
   const [scanInput, setScanInput] = useState('');
   const [isFocused, setIsFocused] = useState(false);
@@ -45,6 +55,7 @@ export default function ScannerHeader({
       const isItemId = storeItems.some((i) =>
         i.id.toUpperCase() === code || i.packageBarcode?.trim().toUpperCase() === code
       );
+      const isRewardId = currentTab === 'Rewards Menu' && rewards.some((reward) => reward.id.toUpperCase() === code);
 
       // Check combined code (e.g. STU1001_ASM1001)
       let isCombinedCode = false;
@@ -67,7 +78,7 @@ export default function ScannerHeader({
         }
       }
 
-      if (isStudentId || isAssignmentId || isItemId || isCombinedCode) {
+      if (isStudentId || isAssignmentId || isItemId || isRewardId || isCombinedCode) {
         onScan(code);
         setScanInput('');
         addPulseEffect();
@@ -75,7 +86,7 @@ export default function ScannerHeader({
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [scanInput, students, assignments, storeItems, onScan]);
+  }, [scanInput, students, assignments, storeItems, rewards, currentTab, onScan]);
 
   // Global hotkey: Capture any printable character keypress and focus the scanner
   useEffect(() => {
@@ -188,6 +199,28 @@ export default function ScannerHeader({
 
       {/* Active Scan Context Status / Onboarding banner */}
       <div className="flex items-center gap-3">
+        <div className="flex items-center rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+          <button
+            type="button"
+            onClick={onUndoScan}
+            disabled={!canUndoScan}
+            className="rounded-lg p-2 text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+            title="Undo last scan"
+            aria-label="Undo last scan"
+          >
+            <Undo2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={onRedoScan}
+            disabled={!canRedoScan}
+            className="rounded-lg p-2 text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+            title="Redo last scan"
+            aria-label="Redo last scan"
+          >
+            <Redo2 className="h-4 w-4" />
+          </button>
+        </div>
         {activeStudentName ? (
           <div className="flex items-center gap-2.5 bg-blue-50 border border-blue-100 text-blue-900 py-1.5 px-3.5 rounded-xl text-sm animate-fade-in shadow-sm">
             <div className="h-2 w-2 rounded-full bg-blue-600 animate-pulse" />

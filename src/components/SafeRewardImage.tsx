@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { RewardItem } from '../types';
 import {
   Sparkles,
   Trophy,
@@ -21,12 +22,12 @@ interface SafeRewardImageProps {
   src?: string;
   alt: string;
   name: string;
-  type: 'points' | 'custom';
+  type: RewardItem['type'];
   className?: string;
   iconClassName?: string;
 }
 
-export function getRewardFallback(name: string, type: 'points' | 'custom') {
+export function getRewardFallback(name: string, type: RewardItem['type']) {
   const n = name.toLowerCase();
 
   if (n.includes('star') || n.includes('participation')) {

@@ -22,10 +22,14 @@ import {
   PlusCircle,
   MinusCircle,
   Archive,
-  ArchiveRestore
+  ArchiveRestore,
+  ThumbsDown,
+  ThumbsUp,
+  Printer
 } from 'lucide-react';
 import { Student, RewardItem, ScanLog } from '../types';
 import SafeRewardImage from './SafeRewardImage';
+import RewardQuickScanSheet from './RewardQuickScanSheet';
 import trophyImage from '../assets/rewards/trophy.jpg';
 import couponImage from '../assets/rewards/coupon.jpg';
 import pizzaImage from '../assets/rewards/pizza.jpg';
@@ -38,9 +42,12 @@ import deskImage from '../assets/rewards/desk.jpg';
 interface RewardsViewProps {
   students: Student[];
   rewards: RewardItem[];
+  classId: string;
+  className: string;
+  schoolName?: string;
   activeRewardId: string | null;
   onSelectActiveReward: (id: string | null) => void;
-  onAddReward: (name: string, pointsValue: number, type: 'points' | 'custom', imageUrl?: string, description?: string) => string;
+  onAddReward: (name: string, pointsValue: number, type: RewardItem['type'], imageUrl?: string, description?: string) => string;
   onDeleteReward: (id: string) => void;
   onArchiveReward: (id: string) => void;
   onRestoreReward: (id: string) => void;
@@ -88,6 +95,9 @@ const ILLUSTRATION_PRESETS = [
 export default function RewardsView({
   students,
   rewards,
+  classId,
+  className,
+  schoolName,
   activeRewardId,
   onSelectActiveReward,
   onAddReward,
@@ -103,10 +113,13 @@ export default function RewardsView({
   const [showAddForm, setShowAddForm] = useState(false);
   const [newRewardName, setNewRewardName] = useState('');
   const [newRewardPoints, setNewRewardPoints] = useState<number>(0);
+  const [newRewardType, setNewRewardType] = useState<RewardItem['type']>('points');
+  const [behaviorPolarity, setBehaviorPolarity] = useState<'positive' | 'negative'>('positive');
   const [newRewardDescription, setNewRewardDescription] = useState('');
   const [newRewardImage, setNewRewardImage] = useState('');
   const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
   const [showArchive, setShowArchive] = useState(false);
+  const [showQuickScanSheet, setShowQuickScanSheet] = useState(false);
 
   // Simulated Scanning state
   const [simStudentId, setSimStudentId] = useState('');
@@ -140,10 +153,13 @@ export default function RewardsView({
     e.preventDefault();
     if (!newRewardName.trim()) return;
 
+    const pointsValue = newRewardType === 'behavior' && behaviorPolarity === 'negative'
+      ? -Math.abs(newRewardPoints)
+      : Math.abs(newRewardPoints);
     onAddReward(
       newRewardName,
-      newRewardPoints,
-      newRewardPoints > 0 ? 'points' : 'custom',
+      newRewardType === 'custom' ? 0 : pointsValue,
+      newRewardType,
       newRewardImage,
       newRewardDescription
     );
@@ -151,6 +167,8 @@ export default function RewardsView({
     // Reset Form
     setNewRewardName('');
     setNewRewardPoints(0);
+    setNewRewardType('points');
+    setBehaviorPolarity('positive');
     setNewRewardDescription('');
     setNewRewardImage('');
     setSelectedPreset(null);
@@ -197,7 +215,7 @@ export default function RewardsView({
               <div className="bg-amber-50 border border-amber-200 text-amber-900 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-sm">
                 <CheckCircle className="w-4 h-4 text-amber-600" />
                 Selected: <span className="underline">{activeReward.name}</span> 
-                {activeReward.pointsValue > 0 && ` (${activeReward.pointsValue} pts)`}
+                {activeReward.pointsValue !== 0 && ` (${activeReward.pointsValue > 0 ? '+' : ''}${activeReward.pointsValue} pts)`}
               </div>
             ) : (
               <div className="bg-rose-50 border border-rose-100 text-rose-700 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-2">
@@ -254,7 +272,7 @@ export default function RewardsView({
       {/* 3. Grid of Rewards (Teacher Point Stamps & Custom Prizes) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="leading-tight">
               <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">Reward Catalog</h2>
               <p className="text-xs text-slate-500 font-medium mt-1">
@@ -262,13 +280,22 @@ export default function RewardsView({
               </p>
             </div>
 
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
-            >
-              {showAddForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-              {showAddForm ? 'Cancel Creation' : 'Create New Prize'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowQuickScanSheet(true)}
+                disabled={activeRewards.length === 0}
+                className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+              >
+                <Printer className="h-4 w-4" /> Quick-Scan Sheet
+              </button>
+              <button
+                onClick={() => setShowAddForm(!showAddForm)}
+                className="py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+              >
+                {showAddForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                {showAddForm ? 'Cancel Creation' : 'Create New Prize'}
+              </button>
+            </div>
           </div>
 
           {/* Form to create a custom reward */}
@@ -281,7 +308,30 @@ export default function RewardsView({
             >
               <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-2">
                 <PlusCircle className="w-5 h-5 text-blue-600" />
-                <span className="font-extrabold text-slate-800 text-sm">Add Custom Prize or Point Stamp</span>
+                <span className="font-extrabold text-slate-800 text-sm">Add Reward, Prize, or Behavior</span>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Option Type</label>
+                <div className="grid grid-cols-3 gap-2 rounded-xl bg-slate-100 p-1">
+                  {([
+                    { value: 'points', label: 'Point Reward' },
+                    { value: 'custom', label: 'Prize' },
+                    { value: 'behavior', label: 'Behavior' }
+                  ] as const).map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => {
+                        setNewRewardType(option.value);
+                        if (option.value === 'custom') setNewRewardPoints(0);
+                      }}
+                      className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${newRewardType === option.value ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -298,7 +348,19 @@ export default function RewardsView({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Points Value Bonus (Optional)</label>
+                  <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                    {newRewardType === 'behavior' ? 'Behavior Points' : 'Points Value Bonus'}
+                  </label>
+                  {newRewardType === 'behavior' && (
+                    <div className="mb-2 flex gap-2">
+                      <button type="button" onClick={() => setBehaviorPolarity('positive')} className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-[10px] font-bold ${behaviorPolarity === 'positive' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500'}`}>
+                        <ThumbsUp className="h-3.5 w-3.5" /> Positive
+                      </button>
+                      <button type="button" onClick={() => setBehaviorPolarity('negative')} className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-[10px] font-bold ${behaviorPolarity === 'negative' ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-slate-200 text-slate-500'}`}>
+                        <ThumbsDown className="h-3.5 w-3.5" /> Negative
+                      </button>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
@@ -306,9 +368,14 @@ export default function RewardsView({
                       max="1000"
                       value={newRewardPoints}
                       onChange={(e) => setNewRewardPoints(parseInt(e.target.value) || 0)}
+                      disabled={newRewardType === 'custom'}
                       className="w-24 py-2.5 px-3 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                    <span className="text-[11px] text-slate-400 font-medium">Points to add to student's balance</span>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      {newRewardType === 'behavior'
+                        ? `${behaviorPolarity === 'positive' ? 'Add to' : 'Take from'} the student's balance`
+                        : newRewardType === 'custom' ? 'Prizes do not change points' : 'Points to add to the student balance'}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -453,9 +520,9 @@ export default function RewardsView({
                           iconClassName="w-6 h-6"
                         />
                         <span className={`absolute bottom-0 inset-x-0 text-[8px] uppercase font-black text-white text-center py-0.5 ${
-                          reward.type === 'points' ? 'bg-emerald-500' : 'bg-indigo-500'
+                          reward.type === 'behavior' ? (reward.pointsValue < 0 ? 'bg-rose-500' : 'bg-sky-600') : reward.type === 'points' ? 'bg-emerald-500' : 'bg-indigo-500'
                         }`}>
-                          {reward.type === 'points' ? 'Stamp' : 'Prize'}
+                          {reward.type === 'behavior' ? 'Behavior' : reward.type === 'points' ? 'Stamp' : 'Prize'}
                         </span>
                       </div>
 
@@ -481,8 +548,8 @@ export default function RewardsView({
                         <button
                           type="button"
                           onClick={() => {
-                            const val = Math.max(0, reward.pointsValue - 5);
-                            onUpdateReward(reward.id, { pointsValue: val, type: val > 0 ? 'points' : reward.type });
+                            const val = Math.max(reward.type === 'behavior' ? -1000 : 0, reward.pointsValue - 5);
+                            onUpdateReward(reward.id, { pointsValue: val });
                           }}
                           className="text-slate-400 hover:text-slate-600 cursor-pointer"
                           title="Deduct 5 points"
@@ -492,12 +559,12 @@ export default function RewardsView({
                         
                         <input
                           type="number"
-                          min="0"
+                          min={reward.type === 'behavior' ? -1000 : 0}
                           max="1000"
                           value={reward.pointsValue}
                           onChange={(e) => {
                             const val = parseInt(e.target.value) || 0;
-                            onUpdateReward(reward.id, { pointsValue: val, type: val > 0 ? 'points' : reward.type });
+                            onUpdateReward(reward.id, { pointsValue: reward.type === 'behavior' ? Math.max(-1000, Math.min(1000, val)) : Math.max(0, val) });
                           }}
                           className="w-12 bg-white text-center py-1.5 border border-slate-200 rounded-lg text-xs font-black text-slate-800 focus:outline-none"
                         />
@@ -506,7 +573,7 @@ export default function RewardsView({
                           type="button"
                           onClick={() => {
                             const val = Math.min(1000, reward.pointsValue + 5);
-                            onUpdateReward(reward.id, { pointsValue: val, type: val > 0 ? 'points' : reward.type });
+                            onUpdateReward(reward.id, { pointsValue: val });
                           }}
                           className="text-slate-400 hover:text-slate-600 cursor-pointer"
                           title="Add 5 points"
@@ -588,7 +655,7 @@ export default function RewardsView({
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-slate-700 truncate">{reward.name}</p>
-                      <p className="text-[10px] text-slate-400">{reward.pointsValue} pts</p>
+                      <p className={`text-[10px] font-semibold ${reward.pointsValue < 0 ? 'text-rose-500' : 'text-slate-400'}`}>{reward.pointsValue > 0 ? '+' : ''}{reward.pointsValue} pts</p>
                     </div>
                     <button onClick={() => onRestoreReward(reward.id)} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Add to Active Rewards">
                       <ArchiveRestore className="w-4 h-4" />
@@ -630,7 +697,9 @@ export default function RewardsView({
                     </div>
                     <div className="flex-1 leading-tight min-w-0">
                       <span className="text-xs font-bold text-slate-800 block truncate">{r.name}</span>
-                      <span className="text-[10px] text-slate-400 font-semibold block">{r.pointsValue > 0 ? `+${r.pointsValue} pts` : 'Prize Item'}</span>
+                      <span className={`text-[10px] font-semibold block ${r.pointsValue < 0 ? 'text-rose-500' : 'text-slate-400'}`}>
+                        {r.type === 'custom' ? 'Prize Item' : `${r.pointsValue > 0 ? '+' : ''}${r.pointsValue} pts`}
+                      </span>
                     </div>
                     <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md text-[10px] font-black shrink-0">
                       {r.awardedCount}x
@@ -688,6 +757,16 @@ export default function RewardsView({
           </div>
         </div>
       </div>
+
+      {showQuickScanSheet && (
+        <RewardQuickScanSheet
+          classId={classId}
+          className={className}
+          schoolName={schoolName}
+          rewards={rewards}
+          onClose={() => setShowQuickScanSheet(false)}
+        />
+      )}
     </div>
   );
 }

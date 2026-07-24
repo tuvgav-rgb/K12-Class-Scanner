@@ -30,6 +30,8 @@ interface StoreViewProps {
   cashierCart: { itemId: string; quantity: number; price: number }[];
   onUpdateCashierCart: React.Dispatch<React.SetStateAction<{ itemId: string; quantity: number; price: number }[]>>;
   onCheckoutCashierCart: (studentId: string, lines: { itemId: string; quantity: number; price: number }[]) => boolean;
+  continuousStorePoints: boolean;
+  onToggleContinuousStorePoints: () => void;
 }
 
 export default function StoreView({
@@ -50,7 +52,9 @@ export default function StoreView({
   onToggleCashierMode,
   cashierCart,
   onUpdateCashierCart,
-  onCheckoutCashierCart
+  onCheckoutCashierCart,
+  continuousStorePoints,
+  onToggleContinuousStorePoints
 }: StoreViewProps) {
   // UI states
   const [showAddForm, setShowAddForm] = useState(false);
@@ -1115,6 +1119,24 @@ export default function StoreView({
               </div>
             </div>
 
+            <div className={`rounded-xl border p-3 ${continuousStorePoints ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+              <label className="flex cursor-pointer items-center justify-between gap-3">
+                <span className="min-w-0">
+                  <span className={`block text-xs font-extrabold ${continuousStorePoints ? 'text-emerald-900' : 'text-slate-800'}`}>Continuous Points</span>
+                  <span className={`mt-0.5 block text-[10px] font-medium leading-relaxed ${continuousStorePoints ? 'text-emerald-700' : 'text-slate-500'}`}>
+                    Purchases require enough points but do not reduce the balance.
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={continuousStorePoints}
+                  onChange={onToggleContinuousStorePoints}
+                  className="h-5 w-5 shrink-0 accent-emerald-600"
+                  aria-label="Continuous Points mode"
+                />
+              </label>
+            </div>
+
             {isCashierMode ? (
               <div className="space-y-4">
                 <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5">
@@ -1129,7 +1151,7 @@ export default function StoreView({
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-xs font-bold text-white">{activeStudent.name.split(' ').map((name) => name[0]).join('').slice(0, 2)}</div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-extrabold text-blue-900">{activeStudent.name}</p>
-                      <p className="text-[10px] font-semibold text-blue-600">{activeStudent.points.toLocaleString()} points available</p>
+                      <p className="text-[10px] font-semibold text-blue-600">{activeStudent.points.toLocaleString()} current · {activeStudent.totalPoints.toLocaleString()} total</p>
                     </div>
                     <button type="button" onClick={() => onSelectStudent(null)} className="text-xs font-bold text-blue-400 hover:text-blue-700" title="Change buyer">Change</button>
                   </div>
@@ -1196,7 +1218,7 @@ export default function StoreView({
                   {/* Floating balance badge */}
                   <div className="ml-auto flex flex-col items-end shrink-0 font-bold">
                     <span className="text-xs text-blue-900">{activeStudent.points}</span>
-                    <span className="text-[8px] uppercase tracking-wider text-blue-400">Pts</span>
+                    <span className="text-[8px] uppercase tracking-wider text-blue-400">Current pts</span>
                   </div>
 
                   <button

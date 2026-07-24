@@ -17,6 +17,7 @@ export interface Student {
   id: string;
   name: string;
   points: number;
+  totalPoints: number;
   grade: string;
   photoUrl?: string; // Base64 profile picture or image url
   schoolName?: string; // Custom school name
@@ -82,7 +83,7 @@ export interface RewardItem {
   id: string;
   name: string;
   pointsValue: number;
-  type: 'points' | 'custom';
+  type: 'points' | 'custom' | 'behavior';
   imageUrl?: string; // base64 photo or image URL
   description?: string;
   awardedCount: number;

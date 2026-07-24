@@ -143,7 +143,8 @@ export function getClassKeys(classId: string) {
     SCAN_LOGS: `class_scanner_${classId}_scan_logs`,
     SUBJECTS: `class_scanner_${classId}_subjects`,
     REWARDS: `class_scanner_${classId}_rewards`,
-    ACTIVE_REWARD_ID: `class_scanner_${classId}_active_reward_id`
+    ACTIVE_REWARD_ID: `class_scanner_${classId}_active_reward_id`,
+    CONTINUOUS_STORE_POINTS: `class_scanner_${classId}_continuous_store_points`
   };
 }
 
@@ -252,6 +253,14 @@ function normalizeStoreItems(items: StoreItem[]): StoreItem[] {
 // Load the saved state, treating missing or invalid records as empty lists.
 export function loadState(classId: string): AppState {
   const keys = getClassKeys(classId);
+  const storedStudents = loadList<Student>(localStorage.getItem(keys.STUDENTS));
+  const students = storedStudents.map((student) => ({
+    ...student,
+    totalPoints: Number.isFinite(student.totalPoints) ? student.totalPoints : student.points
+  }));
+  if (students.some((student, index) => student.totalPoints !== storedStudents[index]?.totalPoints)) {
+    localStorage.setItem(keys.STUDENTS, JSON.stringify(students));
+  }
   const storedItems = loadList<StoreItem>(localStorage.getItem(keys.STORE_ITEMS), DEFAULT_STORE_ITEMS);
   const storeItems = normalizeStoreItems(storedItems);
   if (storeItems.some((item, index) => item !== storedItems[index])) {
@@ -259,7 +268,7 @@ export function loadState(classId: string): AppState {
   }
 
   return {
-    students: loadList<Student>(localStorage.getItem(keys.STUDENTS)),
+    students,
     assignments: loadList<Assignment>(localStorage.getItem(keys.ASSIGNMENTS)),
     submissions: loadList<AssignmentSubmission>(localStorage.getItem(keys.SUBMISSIONS)),
     storeItems,

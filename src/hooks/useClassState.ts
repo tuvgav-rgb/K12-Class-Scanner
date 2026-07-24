@@ -44,6 +44,18 @@ export interface CashierCartLine {
   price: number;
 }
 
+interface ScanSnapshot {
+  students: Student[];
+  submissions: AssignmentSubmission[];
+  storeItems: StoreItem[];
+  transactions: Transaction[];
+  scanLogs: ScanLog[];
+  rewards: RewardItem[];
+  activeStudentId: string | null;
+  activeAssignmentId: string | null;
+  loadedSessionAssignmentId: string | null;
+}
+
 function inferSubject(name: string): Assignment['subject'] {
   const n = name.toLowerCase();
   if (n.includes('math') || n.includes('fraction') || n.includes(' worksheet') || n.includes('number') || n.includes('arithmetic') || n.includes('algebra') || n.includes('geometry') || n.includes('multiplication') || n.includes('division')) return 'Math';
@@ -63,6 +75,7 @@ export function useClassState() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [submissions, setSubmissions] = useState<AssignmentSubmission[]>([]);
   const [storeItems, setStoreItems] = useState<StoreItem[]>([]);
+  const [continuousStorePoints, setContinuousStorePoints] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [scanLogs, setScanLogs] = useState<ScanLog[]>([]);
   const [subjects, setSubjects] = useState<string[]>([]);
@@ -87,6 +100,8 @@ export function useClassState() {
   // Custom toast notifications
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [storeScanResult, setStoreScanResult] = useState<StoreScanResult | null>(null);
+  const [undoStack, setUndoStack] = useState<ScanSnapshot[]>([]);
+  const [redoStack, setRedoStack] = useState<ScanSnapshot[]>([]);
 
   // Load classes and active class ID on mount
   useEffect(() => {
@@ -100,6 +115,9 @@ export function useClassState() {
   // Reload data whenever activeClassId changes
   useEffect(() => {
     if (!activeClassId) return;
+
+    setUndoStack([]);
+    setRedoStack([]);
 
     // Persist active class ID selection
     saveActiveClassId(activeClassId);
@@ -115,6 +133,7 @@ export function useClassState() {
 
     setSubmissions(initialState.submissions);
     setStoreItems(initialState.storeItems);
+    setContinuousStorePoints(localStorage.getItem(getClassKeys(activeClassId).CONTINUOUS_STORE_POINTS) === 'true');
     setTransactions(initialState.transactions);
     setScanLogs(initialState.scanLogs);
 
@@ -245,6 +264,56 @@ export function useClassState() {
     }
   };
 
+  const captureScanSnapshot = (): ScanSnapshot => ({
+    students,
+    submissions,
+    storeItems,
+    transactions,
+    scanLogs,
+    rewards,
+    activeStudentId,
+    activeAssignmentId,
+    loadedSessionAssignmentId
+  });
+
+  const restoreScanSnapshot = (snapshot: ScanSnapshot) => {
+    updateStudentsState(snapshot.students);
+    updateSubmissionsState(snapshot.submissions);
+    updateStoreItemsState(snapshot.storeItems);
+    updateTransactionsState(snapshot.transactions);
+    updateRewardsState(snapshot.rewards);
+    setScanLogs(snapshot.scanLogs);
+    if (activeClassId) {
+      saveScanLogs(activeClassId, snapshot.scanLogs);
+    }
+    setActiveStudentId(snapshot.activeStudentId);
+    setActiveAssignmentId(snapshot.activeAssignmentId);
+    setLoadedSessionAssignmentId(snapshot.loadedSessionAssignmentId);
+    setStoreScanResult(null);
+  };
+
+  const undoLastScan = () => {
+    const previous = undoStack[undoStack.length - 1];
+    if (!previous) return;
+
+    const current = captureScanSnapshot();
+    setUndoStack((history) => history.slice(0, -1));
+    setRedoStack((history) => [...history, current].slice(-25));
+    restoreScanSnapshot(previous);
+    addToast('Undid the last scan.', 'info');
+  };
+
+  const redoLastScan = () => {
+    const next = redoStack[redoStack.length - 1];
+    if (!next) return;
+
+    const current = captureScanSnapshot();
+    setRedoStack((history) => history.slice(0, -1));
+    setUndoStack((history) => [...history, current].slice(-25));
+    restoreScanSnapshot(next);
+    addToast('Redid the last scan.', 'info');
+  };
+
   const selectActiveReward = (id: string | null) => {
     setActiveRewardId(id);
     if (activeClassId) {
@@ -257,7 +326,7 @@ export function useClassState() {
     }
   };
 
-  const addReward = (name: string, pointsValue: number, type: 'points' | 'custom', imageUrl?: string, description?: string) => {
+  const addReward = (name: string, pointsValue: number, type: RewardItem['type'], imageUrl?: string, description?: string) => {
     const newId = 'REW' + Date.now().toString().slice(-6);
     const newReward: RewardItem = {
       id: newId,
@@ -371,7 +440,8 @@ export function useClassState() {
     const updatedStudents = students.map((s) => {
       if (s.id === studentId) {
         const nextPoints = Math.max(0, s.points + reward.pointsValue);
-        return { ...s, points: nextPoints };
+        const nextTotalPoints = Math.max(0, s.totalPoints + reward.pointsValue);
+        return { ...s, points: nextPoints, totalPoints: nextTotalPoints };
       }
       return s;
     });
@@ -397,12 +467,15 @@ export function useClassState() {
     scannerAudio.playSuccess();
 
     // 4. Create Scan Log
-    const pointsText = reward.pointsValue > 0 ? ` (+${reward.pointsValue} pts)` : '';
+    const pointsText = reward.pointsValue === 0 ? '' : ` (${reward.pointsValue > 0 ? '+' : ''}${reward.pointsValue} pts)`;
+    const actionText = reward.type === 'behavior'
+      ? `${reward.pointsValue < 0 ? 'Recorded negative' : 'Recorded positive'} behavior "${reward.name}" for ${student.name}${pointsText}`
+      : `Awarded "${reward.name}" to ${student.name}${pointsText}`;
     addScanLog(
       rewardId,
       'RewardAwarded',
-      `Awarded "${reward.name}" to ${student.name}${pointsText}`,
-      'success'
+      actionText,
+      reward.pointsValue < 0 ? 'warning' : 'success'
     );
 
     // 5. Trigger Overlay popup for beautiful ceremony!
@@ -414,7 +487,12 @@ export function useClassState() {
       timestamp: Date.now()
     });
 
-    addToast(`Awarded: ${student.name} received "${reward.name}"!${pointsText}`, 'success');
+    addToast(
+      reward.type === 'behavior'
+        ? `${student.name}: ${reward.name}${pointsText}`
+        : `Awarded: ${student.name} received "${reward.name}"!${pointsText}`,
+      reward.pointsValue < 0 ? 'warning' : 'success'
+    );
   };
 
   const addScanLog = (rawCode: string, actionType: ScanLog['actionType'], message: string, status: ScanLog['status']) => {
@@ -438,12 +516,27 @@ export function useClassState() {
     const updated = students.map((s) => {
       if (s.id === studentId) {
         const nextPoints = Math.max(0, s.points + amount);
+        const nextTotalPoints = Math.max(0, s.totalPoints + amount);
         addToast(`Points adjusted for ${s.name}: ${amount > 0 ? '+' : ''}${amount} pts (Now: ${nextPoints} pts)`, amount > 0 ? 'success' : 'info');
-        return { ...s, points: nextPoints };
+        return { ...s, points: nextPoints, totalPoints: nextTotalPoints };
       }
       return s;
     });
     updateStudentsState(updated);
+  };
+
+  const toggleContinuousStorePoints = () => {
+    const nextMode = !continuousStorePoints;
+    setContinuousStorePoints(nextMode);
+    if (activeClassId) {
+      localStorage.setItem(getClassKeys(activeClassId).CONTINUOUS_STORE_POINTS, String(nextMode));
+    }
+    addToast(
+      nextMode
+        ? 'Continuous Points enabled: purchases will be recorded without subtracting points.'
+        : 'Standard store points enabled: purchases will subtract from student balances.',
+      'info'
+    );
   };
 
   const getAssignedStudentIds = (excludedCurrentStudentId?: string) => {
@@ -488,6 +581,7 @@ export function useClassState() {
       id: cleanId,
       name: name.trim(),
       points: 50, // Start with 50 onboarding points!
+      totalPoints: 50,
       grade: grade.trim() || '5A'
     };
     updateStudentsState([...students, newStudent]);
@@ -523,10 +617,12 @@ export function useClassState() {
         nextNumber += 1;
       }
       existingIds.add(id);
+      const points = Number.isFinite(entry.points) ? Math.max(0, Math.round(entry.points as number)) : 50;
       return {
         id,
         name: entry.name.trim(),
-        points: Number.isFinite(entry.points) ? Math.max(0, Math.round(entry.points as number)) : 50,
+        points,
+        totalPoints: points,
         grade: grade.trim() || 'Class Roster'
       };
     });
@@ -810,9 +906,9 @@ export function useClassState() {
       return false;
     }
 
-    // Deduct student points
+    const nextPoints = continuousStorePoints ? student.points : student.points - item.cost;
     const updatedStudents = students.map((s) => 
-      s.id === studentId ? { ...s, points: s.points - item.cost } : s
+      s.id === studentId ? { ...s, points: nextPoints } : s
     );
     updateStudentsState(updatedStudents);
 
@@ -846,12 +942,14 @@ export function useClassState() {
       'success'
     );
 
-    const message = `Checkout successful! ${student.name} bought "${item.name}" (-${item.cost} pts)`;
+    const message = continuousStorePoints
+      ? `Checkout successful! ${student.name} bought "${item.name}". Balance unchanged in Continuous Points mode.`
+      : `Checkout successful! ${student.name} bought "${item.name}" (-${item.cost} pts)`;
     addToast(message, 'success');
     if (fromScan) {
       setStoreScanResult({
         item,
-        student: { ...student, points: student.points - item.cost },
+        student: { ...student, points: nextPoints },
         status: 'success',
         message,
         timestamp: Date.now()
@@ -891,10 +989,12 @@ export function useClassState() {
       return false;
     }
 
-    updateStudentsState(students.map((candidate) => candidate.id === studentId
-      ? { ...candidate, points: candidate.points - total }
-      : candidate
-    ));
+    if (!continuousStorePoints) {
+      updateStudentsState(students.map((candidate) => candidate.id === studentId
+        ? { ...candidate, points: candidate.points - total }
+        : candidate
+      ));
+    }
     updateStoreItemsState(storeItems.map((item) => {
       const line = validLines.find((candidate) => candidate.itemId === item.id);
       return line ? { ...item, stock: item.stock - line.quantity } : item;
@@ -914,7 +1014,12 @@ export function useClassState() {
     updateTransactionsState([...cartTransactions, ...transactions]);
     scannerAudio.playCheckout();
     addScanLog('CASHIER_CART', 'ItemPurchased', `${student.name} purchased ${validLines.length} cart item${validLines.length === 1 ? '' : 's'} for ${total} points`, 'success');
-    addToast(`Cashier checkout complete: ${student.name} spent ${total.toLocaleString()} points.`, 'success');
+    addToast(
+      continuousStorePoints
+        ? `Cashier checkout complete: ${student.name}'s purchase was recorded with no points deducted.`
+        : `Cashier checkout complete: ${student.name} spent ${total.toLocaleString()} points.`,
+      'success'
+    );
     return true;
   };
 
@@ -922,6 +1027,9 @@ export function useClassState() {
   const triggerScan = (rawCode: string, currentTab: string, isPriceCheck = false) => {
     const code = rawCode.trim().toUpperCase();
     if (!code) return;
+
+    setUndoStack((history) => [...history, captureScanSnapshot()].slice(-25));
+    setRedoStack([]);
 
     // 0. Check if the code is a combined student + assignment ID code (e.g. STU101_ASM101)
     const separators = ['_', '-', ':'];
@@ -1097,7 +1205,18 @@ export function useClassState() {
       return;
     }
 
-    // 4. Invalid code scanned
+    // 4. On the Rewards Menu, scanning a reward sheet code selects that reward as the next scan target.
+    const reward = rewards.find((candidate) => !candidate.archived && candidate.id.trim().toUpperCase() === code);
+    if (reward && currentTab === 'Rewards Menu') {
+      selectActiveReward(reward.id);
+      scannerAudio.playSuccess();
+      const pointsText = reward.type === 'custom' ? 'prize' : `${reward.pointsValue > 0 ? '+' : ''}${reward.pointsValue} points`;
+      addScanLog(code, 'SystemLog', `Selected reward "${reward.name}" (${pointsText}) via quick-scan sheet`, 'success');
+      addToast(`Reward selected: ${reward.name} (${pointsText}). Now scan a student.`, 'success');
+      return;
+    }
+
+    // 5. Invalid code scanned
     scannerAudio.playError();
     addScanLog(code, 'InvalidCode', `Scanned unrecognized code: "${rawCode}"`, 'error');
     addToast(`Unrecognized scan code: "${rawCode}"`, 'error');
@@ -1208,6 +1327,8 @@ export function useClassState() {
     assignments,
     submissions,
     storeItems,
+    continuousStorePoints,
+    toggleContinuousStorePoints,
     transactions,
     scanLogs,
     subjects,
@@ -1222,6 +1343,10 @@ export function useClassState() {
     removeToast,
     storeScanResult,
     setStoreScanResult,
+    canUndoScan: undoStack.length > 0,
+    canRedoScan: redoStack.length > 0,
+    undoLastScan,
+    redoLastScan,
     adjustStudentPoints,
     addStudent,
     importStudents,

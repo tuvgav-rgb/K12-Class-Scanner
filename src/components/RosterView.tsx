@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { Student } from '../types';
 import { Barcode, QRCodeImage } from './BarcodeComponents';
+import SeatingChartSheet from './SeatingChartSheet';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 
@@ -296,6 +297,8 @@ const CARD_THEMES: CardTheme[] = [
 
 interface RosterViewProps {
   students: Student[];
+  classId: string;
+  className: string;
   schoolName?: string;
   schoolLogoUrl?: string;
   idCardTitle?: string;
@@ -309,6 +312,8 @@ interface RosterViewProps {
 
 export default function RosterView({
   students,
+  classId,
+  className,
   schoolName,
   schoolLogoUrl,
   idCardTitle,
@@ -328,6 +333,7 @@ export default function RosterView({
 
   // Printing states
   const [showPrintAll, setShowPrintAll] = useState(false);
+  const [showSeatingChart, setShowSeatingChart] = useState(false);
   const [bulkThemeId, setBulkThemeId] = useState('individual');
   const [bulkPrintColorMode, setBulkPrintColorMode] = useState<'color' | 'bw'>('color');
 
@@ -548,6 +554,64 @@ export default function RosterView({
     window.print();
   };
 
+  const escapePrintText = (value: string) => value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+  const printQuickScanSheet = async () => {
+    const element = document.getElementById('print-area-wrapper');
+    if (!element || students.length === 0) return;
+
+    const columns = students.length > 36 ? 5 : 4;
+    const qrSize = students.length > 36 ? 46 : 54;
+    const photoSize = students.length > 36 ? 26 : 32;
+    const rowHeight = students.length > 36 ? 76 : 92;
+    const qrCodes = await Promise.all(students.map(async (student) => ({
+      id: student.id,
+      dataUrl: await QRCode.toDataURL(
+        student.qrCodeOption === 'id_and_name' ? `${student.id} - ${student.name}` : student.id,
+        { width: qrSize * 2, margin: 1, color: { dark: '#000000', light: '#ffffff' } }
+      )
+    })));
+    const qrByStudentId = new Map(qrCodes.map((entry) => [entry.id, entry.dataUrl]));
+
+    const studentCells = students.map((student) => {
+      const initials = student.name.split(' ').map((part) => part[0]).join('').slice(0, 2);
+      const photo = student.photoUrl
+        ? `<img src="${escapePrintText(student.photoUrl)}" alt="" style="width:${photoSize}px;height:${photoSize}px;border-radius:50%;object-fit:cover;flex:none;" />`
+        : `<div style="width:${photoSize}px;height:${photoSize}px;border-radius:50%;background:#e2e8f0;color:#334155;display:flex;align-items:center;justify-content:center;font:700 10px Arial,sans-serif;flex:none;">${escapePrintText(initials)}</div>`;
+      return `<div style="height:${rowHeight}px;box-sizing:border-box;border:1px solid #cbd5e1;padding:7px;display:flex;align-items:center;gap:5px;break-inside:avoid;overflow:hidden;">
+        ${photo}
+        <div style="min-width:0;flex:1;">
+          <div style="font:700 9px Arial,sans-serif;color:#0f172a;line-height:1.2;word-break:normal;overflow-wrap:normal;hyphens:none;">${escapePrintText(student.name)}</div>
+          <div style="margin-top:3px;font:700 8px 'Courier New',monospace;color:#64748b;white-space:nowrap;">${escapePrintText(student.id)}</div>
+        </div>
+        <img src="${qrByStudentId.get(student.id)}" alt="QR code for ${escapePrintText(student.name)}" style="width:${qrSize}px;height:${qrSize}px;image-rendering:pixelated;flex:none;" />
+      </div>`;
+    }).join('');
+
+    element.innerHTML = `<div style="background:#ffffff;color:#0f172a;padding:0.25in;font-family:Arial,sans-serif;">
+      <div style="display:flex;justify-content:space-between;align-items:end;border-bottom:2px solid #0f172a;padding-bottom:8px;margin-bottom:10px;">
+        <div><div style="font-size:16px;font-weight:800;">${escapePrintText(cardSchoolName)}</div><div style="font-size:10px;color:#475569;margin-top:2px;">Quick-Scan Roster</div></div>
+        <div style="font-size:9px;color:#64748b;">${students.length} students</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(${columns}, minmax(0, 1fr));gap:6px;">${studentCells}</div>
+    </div>`;
+
+    const handleAfterPrint = () => {
+      element.innerHTML = '';
+      window.removeEventListener('afterprint', handleAfterPrint);
+    };
+    window.addEventListener('afterprint', handleAfterPrint);
+    window.setTimeout(() => {
+      window.focus();
+      window.print();
+    }, 150);
+  };
+
   // Helper to get a consistent avatar accent color for student name initials
   const getAvatarColor = (name: string) => {
     const colors = [
@@ -588,6 +652,22 @@ export default function RosterView({
           >
             <Printer className="w-4 h-4 text-slate-500" />
             Print All ID Cards
+          </button>
+          <button
+            onClick={printQuickScanSheet}
+            disabled={students.length === 0}
+            className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 text-white font-semibold py-2.5 px-4 rounded-xl text-xs shadow-sm transition-all cursor-pointer hover:scale-[1.02]"
+          >
+            <Printer className="w-4 h-4" />
+            Quick-Scan Sheet
+          </button>
+          <button
+            onClick={() => setShowSeatingChart(true)}
+            disabled={students.length === 0}
+            className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 text-blue-800 border border-blue-200 font-semibold py-2.5 px-4 rounded-xl text-xs shadow-sm transition-all cursor-pointer hover:scale-[1.02]"
+          >
+            <School className="w-4 h-4" />
+            Seating Chart Sheet
           </button>
         </div>
       </div>
@@ -1612,6 +1692,16 @@ export default function RosterView({
             </div>
           </div>
         </div>
+      )}
+
+      {showSeatingChart && (
+        <SeatingChartSheet
+          classId={classId}
+          className={className}
+          schoolName={schoolName}
+          students={students}
+          onClose={() => setShowSeatingChart(false)}
+        />
       )}
     </div>
   );

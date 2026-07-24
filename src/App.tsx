@@ -62,6 +62,8 @@ export default function App() {
     assignments,
     submissions,
     storeItems,
+    continuousStorePoints,
+    toggleContinuousStorePoints,
     transactions,
     scanLogs,
     subjects,
@@ -75,6 +77,10 @@ export default function App() {
     removeToast,
     storeScanResult,
     setStoreScanResult,
+    canUndoScan,
+    canRedoScan,
+    undoLastScan,
+    redoLastScan,
     adjustStudentPoints,
     addStudent,
     importStudents,
@@ -315,6 +321,11 @@ export default function App() {
           students={students}
           assignments={assignments}
           storeItems={storeItems}
+          rewards={rewards}
+          canUndoScan={canUndoScan}
+          canRedoScan={canRedoScan}
+          onUndoScan={undoLastScan}
+          onRedoScan={redoLastScan}
         />
 
         {/* Scrollable View Canvas Stage */}
@@ -346,6 +357,8 @@ export default function App() {
               {currentTab === 'Roster & Codes' && (
                 <RosterView
                   students={students}
+                  classId={activeClassId}
+                  className={activeClass?.name || 'Classroom'}
                   schoolName={activeClass?.schoolName}
                   schoolLogoUrl={activeClass?.schoolLogoUrl}
                   idCardTitle={activeClass?.idCardTitle}
@@ -402,6 +415,8 @@ export default function App() {
                   cashierCart={cashierCart}
                   onUpdateCashierCart={setCashierCart}
                   onCheckoutCashierCart={checkoutCashierCart}
+                  continuousStorePoints={continuousStorePoints}
+                  onToggleContinuousStorePoints={toggleContinuousStorePoints}
                 />
               )}
 
@@ -420,6 +435,9 @@ export default function App() {
                 <RewardsView
                   students={students}
                   rewards={rewards}
+                  classId={activeClassId}
+                  className={activeClass?.name || 'Classroom'}
+                  schoolName={activeClass?.schoolName}
                   activeRewardId={activeRewardId}
                   onSelectActiveReward={setActiveRewardId}
                   onAddReward={addReward}

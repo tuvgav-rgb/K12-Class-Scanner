@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Award, Sparkles, Star, Trophy, CheckCircle } from 'lucide-react';
+import { Award, Sparkles, Star, Trophy, CheckCircle, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { Student, RewardItem } from '../types';
 import SafeRewardImage from './SafeRewardImage';
 
@@ -60,6 +60,8 @@ export default function CelebrationOverlay({ info, onClose }: CelebrationOverlay
   if (!info) return null;
 
   const { student, reward } = info;
+  const isNegativeBehavior = reward.type === 'behavior' && reward.pointsValue < 0;
+  const isBehavior = reward.type === 'behavior';
 
   return (
     <AnimatePresence>
@@ -75,7 +77,7 @@ export default function CelebrationOverlay({ info, onClose }: CelebrationOverlay
 
         {/* Confetti rain */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          {confetti.map((p) => (
+          {!isNegativeBehavior && confetti.map((p) => (
             <motion.div
               key={p.id}
               initial={{ y: `${p.y}vh`, x: `${p.x}vw`, rotate: 0, opacity: 1 }}
@@ -123,7 +125,7 @@ export default function CelebrationOverlay({ info, onClose }: CelebrationOverlay
               className="absolute inset-0 w-20 h-20 rounded-full border-2 border-dashed border-amber-400 opacity-60"
             />
             <div className="w-16 h-16 bg-gradient-to-tr from-amber-500 to-yellow-400 rounded-full flex items-center justify-center shadow-lg text-white">
-              <Trophy className="w-8 h-8 text-white drop-shadow-sm" />
+              {isNegativeBehavior ? <ThumbsDown className="w-8 h-8 text-white" /> : isBehavior ? <ThumbsUp className="w-8 h-8 text-white" /> : <Trophy className="w-8 h-8 text-white drop-shadow-sm" />}
             </div>
             {/* Sparkling stars */}
             <Sparkles className="absolute -top-2 -right-2 w-6 h-6 text-yellow-500 animate-bounce" />
@@ -132,10 +134,10 @@ export default function CelebrationOverlay({ info, onClose }: CelebrationOverlay
 
           {/* Heading */}
           <span className="text-[10px] uppercase font-bold tracking-widest text-amber-600 block mb-1">
-            Student Reward Scan
+            {isBehavior ? 'Student Behavior Recorded' : 'Student Reward Scan'}
           </span>
           <h2 className="text-2xl font-black text-slate-800 tracking-tight leading-none mb-4">
-            Congratulations, {student.name}!
+            {isNegativeBehavior ? `Behavior recorded for ${student.name}` : `Congratulations, ${student.name}!`}
           </h2>
 
           {/* Winner Image Box */}
@@ -149,7 +151,7 @@ export default function CelebrationOverlay({ info, onClose }: CelebrationOverlay
               iconClassName="w-16 h-16"
             />
             <div className="absolute bottom-2 left-2 right-2 bg-slate-900/80 backdrop-blur-sm text-[10px] text-white font-bold py-1 px-2.5 rounded-lg">
-              {reward.type === 'points' ? 'Points Bonus' : 'Classroom Prize'}
+              {isBehavior ? (isNegativeBehavior ? 'Points Deduction' : 'Positive Behavior') : reward.type === 'points' ? 'Points Bonus' : 'Classroom Prize'}
             </div>
           </div>
 
@@ -164,10 +166,10 @@ export default function CelebrationOverlay({ info, onClose }: CelebrationOverlay
               </p>
             )}
             
-            {reward.pointsValue > 0 && (
-              <div className="mt-3 inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded-full text-sm shadow-sm">
-                <CheckCircle className="w-4 h-4 text-emerald-600" />
-                +{reward.pointsValue} Points Awarded!
+            {reward.pointsValue !== 0 && (
+              <div className={`mt-3 inline-flex items-center gap-1.5 font-bold px-3 py-1 rounded-full text-sm shadow-sm ${reward.pointsValue < 0 ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                {reward.pointsValue < 0 ? <ThumbsDown className="w-4 h-4 text-rose-600" /> : <CheckCircle className="w-4 h-4 text-emerald-600" />}
+                {reward.pointsValue > 0 ? '+' : ''}{reward.pointsValue} Points {reward.pointsValue < 0 ? 'Removed' : 'Awarded'}
               </div>
             )}
           </div>
