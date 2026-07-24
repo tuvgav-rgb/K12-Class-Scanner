@@ -1,0 +1,144 @@
+@font-face {
+  font-family: "Inter";
+  src: url("./assets/fonts/font-1.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("./assets/fonts/font-2.ttf") format("truetype");
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("./assets/fonts/font-3.ttf") format("truetype");
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("./assets/fonts/font-4.ttf") format("truetype");
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("./assets/fonts/font-5.ttf") format("truetype");
+  font-weight: 800;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/font-6.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/font-7.ttf") format("truetype");
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/font-8.ttf") format("truetype");
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/font-9.ttf") format("truetype");
+  font-weight: 700;
+  font-display: swap;
+}
+
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+#print-area-wrapper {
+  display: none;
+}
+
+@media (max-height: 600px) {
+  .app-sidebar-header {
+    padding: 0.75rem;
+  }
+
+  .app-sidebar-header .sidebar-title-row {
+    margin-bottom: 0.5rem;
+  }
+
+  .app-sidebar-nav {
+    padding-top: 0.375rem;
+    padding-bottom: 0.375rem;
+  }
+
+  .app-sidebar-nav .sidebar-menu-label {
+    margin-bottom: 0.25rem;
+  }
+
+  .app-sidebar-nav .sidebar-navigation-button {
+    min-height: 24px;
+    padding-top: 0.125rem;
+    padding-bottom: 0.125rem;
+    font-size: 0.8125rem;
+  }
+
+  .app-sidebar-logo {
+    margin-top: 0.25rem;
+    padding-top: 0.5rem;
+  }
+
+  .app-sidebar-logo img {
+    max-height: 45px;
+  }
+
+  .app-sidebar-footer {
+    display: none;
+  }
+}
+
+@media print {
+  html, body {
+    background: white !important;
+    color: black !important;
+    height: auto !important;
+  }
+  
+  #root {
+    display: none !important;
+  }
+  
+  #print-area-wrapper {
+    display: block !important;
+  }
+  
+  #print-area-wrapper {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    background: white !important;
+    color: black !important;
+    z-index: 9999999 !important;
+  }
+  
+  /* Force page margins and hide header footers in PDF print options */
+  @page {
+    size: letter;
+    margin: 15mm;
+  }
+}
