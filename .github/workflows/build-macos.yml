@@ -9,10 +9,20 @@ on:
 
 jobs:
   build-dmg:
-    name: Build Intel macOS DMG
-    runs-on: macos-13
+    name: Build ${{ matrix.name }} macOS DMG
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Intel
+            runner: macos-13
+            artifact: K12-ClassScanner-macos-x64-dmg
+          - name: Apple Silicon
+            runner: macos-14
+            artifact: K12-ClassScanner-macos-arm64-dmg
 
     steps:
       - name: Check out source
@@ -39,7 +49,7 @@ jobs:
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
-          name: K12-ClassScanner-macos-x64-dmg
+          name: ${{ matrix.artifact }}
           path: macos/src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: error
           retention-days: 14
