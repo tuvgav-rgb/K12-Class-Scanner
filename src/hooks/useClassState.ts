@@ -567,7 +567,7 @@ export function useClassState() {
     return assignedIds;
   };
 
-  const addStudent = (id: string, name: string, grade: string) => {
+  const addStudent = (id: string, name: string, grade: string, photoUrl?: string) => {
     const cleanId = id.trim().toUpperCase();
     if (!cleanId) {
       addToast('Student ID is required.', 'error');
@@ -582,7 +582,8 @@ export function useClassState() {
       name: name.trim(),
       points: 50, // Start with 50 onboarding points!
       totalPoints: 50,
-      grade: grade.trim() || '5A'
+      grade: grade.trim() || '5A',
+      photoUrl
     };
     updateStudentsState([...students, newStudent]);
     addToast(`Onboarded ${newStudent.name} with +50 points!`, 'success');

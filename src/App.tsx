@@ -14,7 +14,6 @@ import {
   X,
   Scan,
   Coins,
-  Settings2,
   HelpCircle,
   Sparkles,
   School,
@@ -257,15 +256,6 @@ export default function App() {
           </div>
         </nav>
 
-        {/* Sidebar footer settings & credits */}
-        <div className="app-sidebar-footer p-4 mt-auto border-t border-slate-100">
-          <div className="flex items-center justify-between text-[11px] text-slate-400 pl-1 font-semibold">
-            <span>v1.0.0 (WebView2)</span>
-            <span className="hover:text-slate-700 cursor-pointer flex items-center gap-0.5 transition-colors">
-              <Settings2 className="w-4 h-4" /> Settings
-            </span>
-          </div>
-        </div>
       </aside>
 
       {/* 3. Main Content Wrapper */}

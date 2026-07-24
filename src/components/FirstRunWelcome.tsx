@@ -1,6 +1,6 @@
-import { ChangeEvent, FormEvent, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useMemo, useRef, useState } from 'react';
 import ExcelJS from 'exceljs';
-import { ArrowLeft, ArrowRight, CheckCircle2, FileSpreadsheet, Plus, School, Upload, UsersRound } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, FileSpreadsheet, ImagePlus, Plus, School, Upload, UsersRound, X } from 'lucide-react';
 import { ClassSession } from '../types';
 
 type SetupStep = 'welcome' | 'class' | 'roster';
@@ -13,7 +13,7 @@ interface SpreadsheetData {
 
 interface FirstRunWelcomeProps {
   onCreateClass: (name: string, grade?: string, subject?: string, schoolName?: string) => ClassSession;
-  onAddStudent: (id: string, name: string, grade: string) => boolean;
+  onAddStudent: (id: string, name: string, grade: string, photoUrl?: string) => boolean;
   onImportStudents: (entries: Array<{ id?: string; name: string; points?: number }>) => boolean;
   onComplete: () => void;
 }
@@ -55,7 +55,11 @@ export default function FirstRunWelcome({ onCreateClass, onAddStudent, onImportS
   const [className, setClassName] = useState('');
   const [schoolName, setSchoolName] = useState('');
   const [manualStudentName, setManualStudentName] = useState('');
-  const [manualAddedCount, setManualAddedCount] = useState(0);
+  const [manualAddedStudents, setManualAddedStudents] = useState<Array<{ name: string; photoUrl?: string }>>([]);
+  const [manualStudentPhoto, setManualStudentPhoto] = useState<string | undefined>();
+  const [photoCrop, setPhotoCrop] = useState<{ src: string; zoom: number; offsetX: number; offsetY: number } | null>(null);
+  const photoDragStart = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+  const cropSize = 288;
   const [spreadsheet, setSpreadsheet] = useState<SpreadsheetData | null>(null);
   const [nameMode, setNameMode] = useState<NameMode>('full');
   const [nameColumn, setNameColumn] = useState(-1);
@@ -95,10 +99,51 @@ export default function FirstRunWelcome({ onCreateClass, onAddStudent, onImportS
     event.preventDefault();
     if (!manualStudentName.trim()) return;
     const id = `STU${Date.now().toString().slice(-7)}`;
-    if (onAddStudent(id, manualStudentName.trim(), '')) {
+    const name = manualStudentName.trim();
+    if (onAddStudent(id, name, '', manualStudentPhoto)) {
       setManualStudentName('');
-      setManualAddedCount((count) => count + 1);
+      setManualStudentPhoto(undefined);
+      setManualAddedStudents((students) => [...students, { name, photoUrl: manualStudentPhoto }]);
     }
+  };
+
+  const handleManualPhotoUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => setPhotoCrop({ src: reader.result as string, zoom: 1, offsetX: 0, offsetY: 0 });
+    reader.readAsDataURL(file);
+  };
+
+  const saveCroppedPhoto = () => {
+    if (!photoCrop) return;
+
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const context = canvas.getContext('2d');
+      if (!context) return;
+
+      const baseScale = cropSize / Math.min(image.width, image.height);
+      const scale = baseScale * photoCrop.zoom * (canvas.width / cropSize);
+      const width = image.width * scale;
+      const height = image.height * scale;
+      const offsetScale = canvas.width / cropSize;
+      context.drawImage(
+        image,
+        (canvas.width - width) / 2 + photoCrop.offsetX * offsetScale,
+        (canvas.height - height) / 2 + photoCrop.offsetY * offsetScale,
+        width,
+        height
+      );
+      setManualStudentPhoto(canvas.toDataURL('image/jpeg', 0.88));
+      setPhotoCrop(null);
+    };
+    image.src = photoCrop.src;
   };
 
   const applyDetectedColumns = (data: SpreadsheetData) => {
@@ -250,8 +295,16 @@ export default function FirstRunWelcome({ onCreateClass, onAddStudent, onImportS
               <form onSubmit={handleManualStudent} className="rounded-xl border border-slate-200 p-4">
                 <div className="flex items-center gap-2 text-sm font-bold text-slate-800"><UsersRound className="h-4 w-4 text-blue-600" /> Add a student</div>
                 <input value={manualStudentName} onChange={(event) => setManualStudentName(event.target.value)} placeholder="Student full name" className="mt-4 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" />
-                <button type="submit" className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"><Plus className="h-3.5 w-3.5" /> Add to roster</button>
-                {manualAddedCount > 0 && <p className="mt-3 text-xs font-medium text-emerald-700">{manualAddedCount} student{manualAddedCount === 1 ? '' : 's'} added here.</p>}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                    <ImagePlus className="h-3.5 w-3.5" /> Add optional photo
+                    <input type="file" accept="image/*" onChange={handleManualPhotoUpload} className="hidden" />
+                  </label>
+                  <button type="submit" className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"><Plus className="h-3.5 w-3.5" /> Add to roster</button>
+                </div>
+                {manualStudentPhoto && <div className="mt-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2"><img src={manualStudentPhoto} alt="Selected student" className="h-9 w-9 rounded-full object-cover" /><span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-600">Photo ready to add</span><button type="button" onClick={() => setManualStudentPhoto(undefined)} className="rounded p-1 text-slate-400 hover:bg-white hover:text-slate-700" title="Remove selected photo"><X className="h-3.5 w-3.5" /></button></div>}
+                <p className="mt-3 text-xs leading-5 text-slate-500">A photo is optional and can also be added later from the Roster &amp; Codes menu.</p>
+                {manualAddedStudents.length > 0 && <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50 p-3"><p className="text-xs font-semibold text-emerald-800">Added students ({manualAddedStudents.length})</p><ul className="mt-2 space-y-1.5">{manualAddedStudents.map((student, index) => <li key={`${student.name}-${index}`} className="flex items-center gap-2 text-xs font-medium text-emerald-900">{student.photoUrl ? <img src={student.photoUrl} alt="" className="h-5 w-5 rounded-full object-cover" /> : <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-200 text-[9px] font-bold">{student.name.charAt(0).toUpperCase()}</span>}<span>{student.name}</span></li>)}</ul></div>}
               </form>
 
               <div className="rounded-xl border border-slate-200 p-4">
@@ -324,6 +377,49 @@ export default function FirstRunWelcome({ onCreateClass, onAddStudent, onImportS
           </div>
         )}
       </section>
+      {photoCrop && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4" role="dialog" aria-modal="true" aria-labelledby="photo-crop-title">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
+              <div>
+                <h3 id="photo-crop-title" className="text-sm font-bold text-slate-900">Center Student Photo</h3>
+                <p className="mt-1 text-xs text-slate-500">Drag to place the face in the circle, then adjust the zoom.</p>
+              </div>
+              <button onClick={() => setPhotoCrop(null)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Cancel photo crop"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="p-5">
+              <div
+                className="relative mx-auto overflow-hidden rounded-full bg-slate-100 shadow-inner touch-none cursor-move"
+                style={{ width: cropSize, height: cropSize }}
+                onPointerDown={(event) => {
+                  photoDragStart.current = { x: event.clientX, y: event.clientY, offsetX: photoCrop.offsetX, offsetY: photoCrop.offsetY };
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                }}
+                onPointerMove={(event) => {
+                  if (!photoDragStart.current) return;
+                  const start = photoDragStart.current;
+                  setPhotoCrop((current) => current && { ...current, offsetX: start.offsetX + event.clientX - start.x, offsetY: start.offsetY + event.clientY - start.y });
+                }}
+                onPointerUp={() => { photoDragStart.current = null; }}
+                onPointerCancel={() => { photoDragStart.current = null; }}
+              >
+                <img src={photoCrop.src} className="h-full w-full object-cover select-none pointer-events-none" style={{ transform: `translate(${photoCrop.offsetX}px, ${photoCrop.offsetY}px) scale(${photoCrop.zoom})` }} alt="Crop preview" />
+              </div>
+              <div className="mt-5 space-y-2">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                  <label htmlFor="setup-photo-zoom">Zoom</label>
+                  <button onClick={() => setPhotoCrop((current) => current && { ...current, zoom: 1, offsetX: 0, offsetY: 0 })} className="text-blue-600 hover:text-blue-700">Recenter</button>
+                </div>
+                <input id="setup-photo-zoom" type="range" min="1" max="3" step="0.05" value={photoCrop.zoom} onChange={(event) => setPhotoCrop((current) => current && { ...current, zoom: Number(event.target.value) })} className="w-full accent-blue-600" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-4">
+              <button onClick={() => setPhotoCrop(null)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+              <button onClick={saveCroppedPhoto} className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700">Use Photo</button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
