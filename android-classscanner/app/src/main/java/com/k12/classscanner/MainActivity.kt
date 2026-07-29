@@ -160,11 +160,6 @@ private fun ClassScannerApp() {
     val isTablet = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700
     val activeStudent = students.find { it.id == activeStudentId }
     val stateVersion = revision
-    val requestCameraPermission = androidx.activity.compose.rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) cameraOpen = true else announce("Camera permission is needed to scan with the device camera.", false)
-    }
 
     LaunchedEffect(database) {
         database.snapshots().get()?.let { snapshot ->
@@ -187,6 +182,12 @@ private fun ClassScannerApp() {
         if (logs.size > 50) logs.removeLast()
         persist()
         scope.launch { snackbar.showSnackbar(text) }
+    }
+
+    val requestCameraPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) cameraOpen = true else announce("Camera permission is needed to scan with the device camera.", false)
     }
     fun handleScan(raw: String) {
         val code = raw.trim().uppercase()
