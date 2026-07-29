@@ -8,6 +8,8 @@
     "dev:tauri": "tauri dev",
     "build": "npm run build:web",
     "build:web": "vite build",
+    "icons": "tauri icon src-tauri/icons/app-icon.svg",
+    "prebuild:tauri": "npm run icons",
     "build:tauri": "tauri build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
